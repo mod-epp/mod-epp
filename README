@@ -149,6 +149,38 @@ EPPAuthURI is accessed during the EPP <login> command. You should protect
 	</Location>
 
 
+SSL SUPPORT
+-----------
+
+EPP can be layered on Apache 2.0 mod_ssl. The configuration should look
+something like this:
+
+
+	Listen  3121
+	<VirtualHost *:3121>
+	SSLEngine on
+	SSLCipherSuite ALL:!ADH:!EXPORT56:RC4+RSA:+HIGH:+MEDIUM:+LOW:+SSLv2:+EXP:+eNULL
+	SSLCertificateFile /.../server.crt
+	SSLCertificateKeyFile /.../server.key
+
+	SSLCACertificateFile /.../cacert.pem
+	SSLVerifyClient optional_no_ca
+
+	<Directory "/.../cgi-bin">
+    		SSLOptions +StdEnvVars +ExportCertData
+	</Directory>
+
+	CustomLog logs/epp_ssl_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+
+	EPPProtocol On
+
+	[and other EPP directives; see above.]
+
+	</VirtualHost>
+
+Bug Alert: If the SSL negotiation fails, then mod_epp will cause
+a core dump from open_ssl. Keep that in mind if you specify 
+"SSLVerifyClient require" and the client does not provide a cert.
 
 SCRIPTS
 -------

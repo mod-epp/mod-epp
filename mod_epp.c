@@ -498,7 +498,46 @@ if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builti
 		ap_destroy_sub_req(rr);
 }
 
-static int process_epp_connection(conn_rec *c)
+
+
+/*
+ * This implements the pseudo-hello request (connection open).
+ *
+ * We can't recycle epp_process_frame, as this has to be
+ * a GET request to allow SSL renegotiation.
+ *
+ * See the comments in ssl_engine_kernel.c concerning SSL and POST.
+ *
+ */
+apr_status_t epp_do_hello(epp_rec *er)
+{
+apr_status_t rv;
+char errstr[300];
+request_rec *r, *rr;
+int retval;
+epp_conn_rec *conf = er->ur->conf;
+
+char uri[200];
+
+apr_snprintf(uri, sizeof(uri), "%s/hello?frame=%s", conf->session_root, EPP_BUILTIN_HELLO);
+r = epp_create_request(er->ur);
+ap_parse_uri(r, uri);
+
+r->assbackwards    = 0;		/* I don't want headers. */
+r->method          = "GET";
+r->method_number   = M_GET;
+r->protocol        = "INCLUDED";
+
+ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection); 
+ap_process_request(r);
+
+apr_pool_destroy(r->pool);
+return(APR_SUCCESS);
+}
+
+
+
+static int epp_process_connection(conn_rec *c)
 {
     server_rec *s = c->base_server;
     request_rec *r;
@@ -530,7 +569,7 @@ static int process_epp_connection(conn_rec *c)
 
     ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
     ap_add_output_filter("EPPTCP_OUTPUT", NULL, NULL, c);
-    ap_add_input_filter("EPPTCP_INPUT", NULL, NULL, c);
+/*     ap_add_input_filter("EPPTCP_INPUT", NULL, NULL, c); */
 
     apr_pool_create(&p, c->pool);
     ur 		= apr_palloc(p, sizeof(*ur));
@@ -554,11 +593,17 @@ static int process_epp_connection(conn_rec *c)
     er->pool = p;
     er->ur = ur;
     er->bb_out = bb_out;
-    er->orig_xml = EPP_BUILTIN_HELLO;
-    er->orig_xml_size = strlen(EPP_BUILTIN_HELLO);
-    epp_process_frame(er);
+    rv = epp_do_hello(er);
 
-
+    if (rv != APR_SUCCESS)		/* this could be a SSL negotiation error */
+    {					/* or not. something is fishy here */
+	ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
+		"Aborting connection (probably a SSL negotiation error).");
+	APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
+	ap_pass_brigade(c->output_filters, bb_out);
+	
+	goto close_connection;
+    }
 
     /* loop over all epp frames */
     for ( ; ; )
@@ -568,6 +613,12 @@ static int process_epp_connection(conn_rec *c)
  */
 	while( (rv = apr_brigade_length(bb_in, 1, &bb_len), bb_len ) < EPP_TCP_HEADER_SIZE ) 
 		{
+		if (rv != APR_SUCCESS)
+			{
+			ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
+				"Aborting connection.");
+			goto close_connection;
+			}
 		if ((rv = ap_get_brigade(c->input_filters, bb_tmp, AP_MODE_READBYTES,
 			APR_BLOCK_READ, EPP_CHUNK_SIZE) != APR_SUCCESS ||
 			APR_BRIGADE_EMPTY(bb_tmp))) 
@@ -860,7 +911,7 @@ static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 static void register_hooks(apr_pool_t *p)
 {
 
-    ap_hook_process_connection(process_epp_connection,NULL,NULL,
+    ap_hook_process_connection(epp_process_connection,NULL,NULL,
 			       APR_HOOK_MIDDLE);
     ap_register_output_filter("EPPTCP_OUTPUT", epp_tcp_out_filter, NULL,
 		                                   AP_FTYPE_CONNECTION);
