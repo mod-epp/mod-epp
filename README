@@ -182,6 +182,9 @@ Bug Alert: If the SSL negotiation fails, then mod_epp will cause
 a core dump from open_ssl. Keep that in mind if you specify 
 "SSLVerifyClient require" and the client does not provide a cert.
 
+Bug Alert2: The client CERT does not show up in the first
+(fake) hello request.
+
 SCRIPTS
 -------
 
