@@ -5,9 +5,13 @@ This is just a scratch-pad for Otmar to keep the coding
 somewhat organised and focused.
 
 
-
 * test/debug SSL interaction
+	- esp. how to force the server to require
+	  client certs.
+	  SSLVerifyClient does not work right now.
 * transfer of SSL info to the CGI environment.
+	- looks good now, except for
+	http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057
 * check for memory leaks (esp. for long connections)
 * generate proper error messages incl. clTRIDs
 * defined interface to cgis on when to close the connection.
