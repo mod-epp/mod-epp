@@ -698,7 +698,52 @@ apr_pool_destroy(r->pool);
 return(APR_SUCCESS);
 }
 
+/*
+ * Try to implement an aequivalent to the read() system call. 
+ * 
+ * This read the specified number of bytes from the connection
+ * and stores them in the buffer provided.
+ *
+ * Partial reads are considered as errors. APR_SUCCESS is only
+ * returned on reading exactly count bytes.
+ *
+ */
+apr_status_t epp_read(conn_rec *c, apr_pool_t *p, char *buf, apr_size_t count)
+{
+apr_bucket_brigade *bb;
+apr_status_t status;
+apr_size_t need_bytes = count;
+apr_size_t size;
 
+bb = apr_brigade_create(p, c->bucket_alloc);
+
+while(need_bytes > 0)
+	{
+	status = ap_get_brigade(c->input_filters, bb, AP_MODE_READBYTES,
+		APR_BLOCK_READ, need_bytes);
+	if (status != APR_SUCCESS) 
+		{
+		apr_brigade_destroy(bb);
+		return status;
+		}
+
+	size = need_bytes;
+
+	status = apr_brigade_flatten(bb, buf, &size);
+	if (status != APR_SUCCESS) 
+		{
+		apr_brigade_destroy(bb);
+		return status;
+		}
+
+	need_bytes -= size;
+	buf += size;
+	}
+
+apr_brigade_destroy(bb);
+
+return APR_SUCCESS;
+}
 
 static int epp_process_connection(conn_rec *c)
 {
@@ -710,7 +755,6 @@ static int epp_process_connection(conn_rec *c)
     unsigned long framelen, framelen_n;
     apr_pool_t *p, *p_er;
     apr_bucket_brigade *bb_in;
-    apr_bucket_brigade *bb_tmp;
     apr_bucket_brigade *bb_out;
     apr_bucket *e,*prev_e,*next_e;
     apr_status_t rv;
@@ -752,7 +796,6 @@ static int epp_process_connection(conn_rec *c)
 
     bb_in = apr_brigade_create(ur->pool, c->bucket_alloc);
     bb_out = apr_brigade_create(ur->pool, c->bucket_alloc);
-    bb_tmp = apr_brigade_create(ur->pool, c->bucket_alloc);
 
 
     /* send greeting */
@@ -771,7 +814,8 @@ static int epp_process_connection(conn_rec *c)
 	APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 	ap_pass_brigade(c->output_filters, bb_out);
 	
-	goto close_connection;
+	apr_pool_destroy(p);		/* not really needed */
+	return OK;			/* bail out */
     }
 
     apr_pool_destroy(p_er);
@@ -780,97 +824,44 @@ static int epp_process_connection(conn_rec *c)
     for ( ; ; )
 	{
 	ap_update_child_status(c->sbh, SERVER_BUSY_KEEPALIVE, NULL);
-/*
- * not enough data to read a complete header?
- */
-	while( (rv = apr_brigade_length(bb_in, 1, &bb_len), bb_len ) < EPP_TCP_HEADER_SIZE ) 
-		{
-		if (rv != APR_SUCCESS)
-			{
-			ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
-				"Aborting connection.");
-			goto close_connection;
-			}
-		if ((rv = ap_get_brigade(c->input_filters, bb_tmp, AP_MODE_READBYTES,
-			APR_BLOCK_READ, EPP_CHUNK_SIZE) != APR_SUCCESS ||
-			APR_BRIGADE_EMPTY(bb_tmp))) 
-			{
-			ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
-				"Error reading EPP header (timeout or connection close). Aborting connection.");
-			apr_brigade_destroy(bb_tmp);
-
-			er = apr_palloc(p, sizeof(*er));
-			er->pool = p;
-			er->ur = ur;
-    			ur->er = er;
-			er->bb_out = bb_out;
-
-			er->orig_xml = EPP_BUILTIN_TIMEOUT;
-			er->orig_xml_size = strlen(EPP_BUILTIN_TIMEOUT);
-			epp_process_frame(er);
-			/* as we close the connection, we don't need to deallocate now. */
-
-    			APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
-			ap_pass_brigade(c->output_filters, bb_out);
-			goto close_connection;
-			}
-
-		e = APR_BRIGADE_FIRST(bb_tmp);
-		if (APR_BUCKET_IS_EOS(e) || APR_BUCKET_IS_FLUSH(e)) 
-			{
-	/* EOS or similar? return it through output filter */
-			APR_BUCKET_REMOVE(e);
-			APR_BRIGADE_INSERT_TAIL(bb_out, e);
-			ap_pass_brigade(c->output_filters, bb_out);
-			goto close_connection;
-			}
-
-		APR_BRIGADE_CONCAT(bb_in, bb_tmp);   
-
-		apr_brigade_length(bb_in, 1, &bb_len);
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-			"apr_brigade_length returned %ld", bb_len);
-		}
-
 
 /*
- * we have enough data in the brigade, so read header.
+ * prepare pool for the request.
  */
-	len = EPP_TCP_HEADER_SIZE;
-	apr_brigade_flatten(bb_in, (char *) &framelen_n, &len);
-
-	framelen   = ntohl(framelen_n) - EPP_TCP_HEADER_SIZE;
-
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"HEADER: length = %u.",framelen);
-/*
- * Remove the header from the brigade
- *
- */
-	apr_brigade_partition(bb_in, EPP_TCP_HEADER_SIZE, &next_e);
-	while (!APR_BRIGADE_EMPTY(bb_in)) 
-		{
-		e = APR_BRIGADE_FIRST(bb_in);
-		if (e == next_e) break;
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-			"POST-HEADER: removing one bucket (length = %u).",e->length);
-		apr_bucket_delete(e);
-		}
-
-	if (framelen > EPP_MAX_FRAME_SIZE)
-	{
-		ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
-			"EPP frame too large (%ld bytes). aborting.", framelen);
-		goto close_connection;
-		/* XXX todo: send a meaningfull error message. */
-	}
-
 	apr_pool_create(&p_er, ur->pool); 
     	er = apr_palloc(p_er, sizeof(*er));
 	er->pool = p_er;
 	er->ur = ur;
 	ur->er = er;
 	er->bb_out = bb_out;
+/*
+ * read the header.
+ */
+
+	rv = epp_read(c, p_er, (char *) &framelen_n, EPP_TCP_HEADER_SIZE);
+	if (rv != APR_SUCCESS)
+		{
+		ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
+			"Aborting connection, couldn't read header.");
+		APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
+		ap_pass_brigade(c->output_filters, bb_out);
+		break;
+		}
+
+	framelen   = ntohl(framelen_n) - EPP_TCP_HEADER_SIZE;
+
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"HEADER: length = %u.",framelen);
+
+	if (framelen > EPP_MAX_FRAME_SIZE)
+	{
+		ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
+			"EPP frame too large (%ld bytes). aborting.", framelen);
+		APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
+		ap_pass_brigade(c->output_filters, bb_out);
+		break;
+		/* XXX todo: send a meaningfull error message. */
+	}
 
     	xml = apr_palloc(er->pool, framelen + 1);
 
@@ -878,36 +869,16 @@ static int epp_process_connection(conn_rec *c)
 	er->orig_xml_size = framelen;
     	ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
 
-/*
- * Do we need more data in the brigade?
- *
- * If yes, get a new one and concat them.
- *
- */
-	while( (rv = apr_brigade_length(bb_in, 1, &bb_len), bb_len ) < framelen ) 
-	{
-	if ((rv = ap_get_brigade(c->input_filters, bb_tmp, AP_MODE_READBYTES,
-		APR_BLOCK_READ, EPP_CHUNK_SIZE) != APR_SUCCESS ||
-		APR_BRIGADE_EMPTY(bb_tmp))) 
+	rv = epp_read(c, p_er, xml, framelen);
+	if (rv != APR_SUCCESS)
 		{
 		ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
-			"Error reading EPP frame. Aborting connection.");
-		apr_brigade_destroy(bb_tmp);
+			"Aborting connection, couldn't read XML.");
 		APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 		ap_pass_brigade(c->output_filters, bb_out);
-		goto close_connection;
+		break;
 		}
-	APR_BRIGADE_CONCAT(bb_in, bb_tmp);   
-	}
-
-/*
- * We now have enough data in the brigade. Copy it over to the xml string.
- *
- */
-
-	len = framelen;
-	apr_brigade_flatten(bb_in, xml, &len);
-	xml[framelen] = '\0';
+	xml[framelen] = '\0';		/* just to be sure it's terminated. */
 
 /*	fprintf(stderr, "Read %ld bytes of XML: \n--->%s<----\n", framelen, xml); */
 
@@ -920,25 +891,6 @@ static int epp_process_connection(conn_rec *c)
 	apr_pool_destroy(p_er);
 
 
-/*
- * Now we have to get rid of the first framelen bytes from the brigade
- *
- */
-	apr_brigade_partition(bb_in, framelen, &next_e);
-	while (!APR_BRIGADE_EMPTY(bb_in)) 
-		{
-		e = APR_BRIGADE_FIRST(bb_in);
-		if (e == next_e) break;
-/*		ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-			"POST-FRAME: removing one bucket (length = %u).",e->length);
-*/
-		apr_bucket_delete(e);
-		}
-
-	apr_brigade_length(bb_in, 1, &bb_len);
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-		"Finished processing EPP frame. %ld bytes left in brigade.", bb_len);
-
 	if (ur->connection_close)
 		{
 		ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL, "Closing connection.");
@@ -946,7 +898,6 @@ static int epp_process_connection(conn_rec *c)
 		}
 	}
 
-close_connection:
 
     apr_pool_destroy(p);	/* not really needed */
     return OK;
@@ -1009,28 +960,6 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	}
 
     return ap_pass_brigade(f->next, bb);
-}
-
-
-/*
- * This input filter reads a epp/tcp frame, waits for it to be complete
- * and then strip out the header.
- *
- * DUMMY FUNCTION FOR NOW. NOTHING DONE HERE
- *
- */
-static apr_status_t epp_tcp_in_filter(ap_filter_t * f, apr_bucket_brigade * bb,
-		 ap_input_mode_t mode, apr_read_type_e block, apr_off_t readbytes)
-{
-    apr_bucket *header;
-    apr_status_t rv;
-    const char *buf;
-    const char *pos;
-    unsigned long len;
-    apr_off_t bb_len;
-
-    rv = ap_get_brigade(f->next, bb, mode, block, readbytes);
-    return rv;
 }
 
 
@@ -1135,8 +1064,6 @@ static void register_hooks(apr_pool_t *p)
     ap_hook_process_connection(epp_process_connection,NULL,NULL,
 			       APR_HOOK_MIDDLE);
     ap_register_output_filter("EPPTCP_OUTPUT", epp_tcp_out_filter, NULL,
-		                                   AP_FTYPE_CONNECTION);
-    ap_register_input_filter("EPPTCP_INPUT", epp_tcp_in_filter, NULL,
 		                                   AP_FTYPE_CONNECTION);
     ap_register_input_filter("EOS_INPUT", eos_in_filter, NULL,
 		                                   AP_FTYPE_PROTOCOL);
