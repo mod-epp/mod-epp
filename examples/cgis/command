@@ -28,6 +28,9 @@ print "  -->";
 my $cltrid = $q->param("clTRID");
 $cltrid = "not-given" unless (defined($cltrid));
 
+my $session = $q->cookie("session");
+$session = "no session cookie" unless (defined($session));
+
 print <<EOM;
 
   <response>
@@ -36,6 +39,7 @@ print <<EOM;
     </result>
     <trID>
       <clTRID>$cltrid</clTRID>
+      <!-- Session-cookie: $session -->
     </trID>
   </response>
 EOM

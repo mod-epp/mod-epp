@@ -18,10 +18,12 @@ $q = new CGI;
 my $cltrid = $q->param("clTRID");
 my $code = $q->param("code");
 my $msg = $q->param("msg");
+my $session = $q->cookie("session");
 
 $cltrid = "non-specified" unless (defined($cltrid));
 $code = 2400 unless (defined($code));
 $msg = "generic error" unless (defined($msg));
+$session = "no session cookie" unless (defined($session));
 
 my $debug = 1;
 
@@ -45,6 +47,7 @@ print <<EOM;
     </result>
     <trID>
       <clTRID>$cltrid</clTRID>
+      <!-- Session-cookie: $session -->
     </trID>
   </response>
 </epp>

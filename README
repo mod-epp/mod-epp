@@ -277,6 +277,10 @@ If the script wants to tear down the connection to the client,
 it has to include "Connection: close" in the header of the
 answer. This convention was selected in analogy to HTTP 1.1.
 
+mod_epp generates a random string for each EPP connection and passes 
+this to the backend as a Cookie with the name "session".
+This can be used for session tracking.
+
 Command Interface:
 - - - - - - - - -
 	

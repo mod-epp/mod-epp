@@ -141,13 +141,15 @@ typedef struct epp_user_rec {
 
     conn_rec *c;
 
+    char *auth_string;
     char clid[CLIDSIZE];
     char pw[PWSIZE];
-    char *auth_string;
+    char cookie[41]; 		/* session=MD5-hash  thus: 8 + (MD5_DIGESTSIZE * 2) + 1 */
 
     int authenticated;
     int connection_close;	/* did a script signal Connection: close ? */
     int failed_logins;
+
 
 /* give the filter a chance to find the current request object */
     struct epp_rec *er;	

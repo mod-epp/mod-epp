@@ -88,6 +88,10 @@ somewhat organised and focused.
 
     I went for b).  /ol/2k2/12/18.
 
+    Update: Everything is fine now, I even found the core-dump on
+    failed SSL negotiations. Just one minor issue left: I do
+    not see the client CERT during the pseudo hello request which
+    generates the greeting.  /ol/2k3/03/11
 
 * transfer of SSL info to the CGI environment.
 	- looks good now, except for
@@ -105,9 +109,11 @@ somewhat organised and focused.
 * defined interface to cgis on when to close the connection.
 	Done. The CGI have to send a "Connection: close" in the reply header.
 * check the timeout / connection close code
+	looks better now.
 * configuration finetuning.
 	i.e. allow for global defs and merge in Vhost specific changes.
 * generate a session identifier and pass it as Cookie to the scripts..
 * check error handling on incomplete installs.
+	looks better now.
 * check authentication passing when running mod_epp as reverse proxy.
 * check if Connection: close works through mod_proxy

@@ -65,11 +65,59 @@
 #include "apr_general.h"
 #include "util_filter.h"
 #include "scoreboard.h"
+#include "apr_md5.h"
+
 #include "mod_epp.h"
 
 #include <sys/types.h>
+#include <time.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+
 
 module AP_MODULE_DECLARE_DATA epp_module;
+
+/*
+ * Generate the session identifying cookie
+ *
+ * It's a MD5 hash over
+ * 	the connection struct
+ *	current time
+ *	process id + parent id
+ *
+ * (we don't need unpredictability, just uniqueness)
+ *
+ */
+void epp_make_cookie(epp_user_rec *ur)
+{
+apr_md5_ctx_t md5ctx;
+unsigned char hash[MD5_DIGESTSIZE];
+const char *hex = "0123456789abcdef";
+char *r; 
+int i;
+time_t t;
+pid_t pids[2];
+
+time(&t);
+
+pids[0] = getpid();
+pids[1] = getppid();
+
+apr_md5_init(&md5ctx);
+apr_md5_update(&md5ctx, (void *)ur->c, sizeof(conn_rec));
+apr_md5_update(&md5ctx, (void *)&t, sizeof(t));
+apr_md5_update(&md5ctx, (void *)pids, sizeof(pids));
+apr_md5_final(hash, &md5ctx);
+
+r = apr_cpystrn(ur->cookie, "session=", 9);
+for (i = 0; i < MD5_DIGESTSIZE; i++) 
+	{
+	*r++ = hex[hash[i] >> 4];
+	*r++ = hex[hash[i] & 0xF];
+	}
+*r = '\0';
+}
 
 /* two simple xml helpers from mod_jabber */
 
@@ -352,6 +400,7 @@ r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
 r->the_request     = req;
 
+apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection);
 ap_update_child_status(r->connection->sbh, SERVER_BUSY_WRITE, r);
 ap_process_request(r);
@@ -452,6 +501,7 @@ er->ur->auth_string = apr_psprintf(er->ur->pool, "Basic %s", ap_pbase64encode(er
 r = epp_create_request(er->ur);
 er->r = r;
 apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
+apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 
 r->the_request	= (char *) er->ur->conf->authuri;
 r->uri 		= (char *) er->ur->conf->authuri;
@@ -460,6 +510,7 @@ r->method          = "GET";
 r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
 
+apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 /*
  * ap_process_request_internal does all the auth checks, but does not
  * actually call the handler. Just what we want.
@@ -617,6 +668,7 @@ sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI)
 
 apr_table_set(r->headers_in, "Content-Type", "multipart/form-data; boundary=--BOUNDARY--");
 apr_table_set(r->headers_in, "Content-Length", content_length);
+apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 
 ap_add_input_filter("XMLCGI_INPUT", (void *) er, r, r->connection);
 
@@ -700,6 +752,7 @@ r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
 r->the_request     = uri;	/* make sure the logging is correct */
 
+apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 
 ap_update_child_status(r->connection->sbh, SERVER_BUSY_WRITE, r);
 ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection); 
@@ -812,6 +865,8 @@ static int epp_process_connection(conn_rec *c)
     ur->connection_close= 0;
     ur->conf	= conf;
     ur->er	= NULL;
+
+    epp_make_cookie(ur);
 
     ap_add_output_filter("EPPTCP_OUTPUT", (void *) ur, NULL, c);
 
