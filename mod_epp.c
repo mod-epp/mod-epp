@@ -209,6 +209,8 @@ hello = get_elem(doc->root->first_child, "hello");
 if (hello != NULL)
 	{
 	apr_snprintf(b, b_size, "%s/hello", conf->session_root);
+	if (builtin)
+		*builtin = hello;
 	return(APR_SUCCESS);
 	}
 
@@ -220,6 +222,8 @@ timeout = get_elem(doc->root->first_child, "timeout");
 if (timeout != NULL)
 	{
 	apr_snprintf(b, b_size, "%s/timeout", conf->session_root);
+	if (builtin)
+		*builtin = timeout;
 	return(APR_SUCCESS);
 	}
 
@@ -420,6 +424,15 @@ if (builtin && !strcmp("logout",builtin->name))
 if (rv != APR_SUCCESS)	/* something went wrong with the builtins */
 {
 	epp_error_handler(er, conf->error_protocol, "Protocol error.");
+	return;
+}
+
+
+if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builtin requires auth */
+{
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
+		"I can't call %s without prior login.", uri);
+	epp_error_handler(er, conf->error_protocol, "You need to login.");
 	return;
 }
 
