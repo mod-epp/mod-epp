@@ -154,7 +154,7 @@ for (t = id->first_cdata.first; t; t = t->next)
 	n -= strlen(t->text);
 	if (n < 1) break;
 	}
-				    
+
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 	"EPP: found clTRID = %s.", er->cltrid);
 
@@ -313,8 +313,10 @@ if (rv != APR_SUCCESS)
 	er->serialised_xml_size = strlen(er->serialised_xml);
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"XML: serialized xml size = %d.", er->serialised_xml_size);
-	sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI) + 
-				+ strlen(EPP_CONTENT_CLTRID_CGI) + strlen(EPP_CONTENT_POSTFIX_CGI)
+	sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI) 
+				+ strlen(EPP_CONTENT_CLTRID_CGI) 
+				+ strlen(er->cltrid) 
+				+ strlen(EPP_CONTENT_POSTFIX_CGI)
 				+ er->serialised_xml_size);
 
 	apr_table_set(r->headers_in, "Content-Type", "multipart/form-data; boundary=--BOUNDARY--");
