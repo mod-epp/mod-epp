@@ -1,0 +1,135 @@
+
+                                mod_epp
+                                =======
+
+OVERVIEW
+
+This module implements the EPP over TCP protocol as defined
+in draft-ietf-provreg-epp-07.txt and draft-ietf-provreg-epp-tcp-05.txt
+as an Apache 2.0 module. This is *not* a full implementation
+of EPP, this module just makes it possible to write an EPP
+server as a set of CGI scripts.
+
+As of the current version, mod_epp does not validate incoming
+EPP requests according to the XML schema. It only checks
+for XML-wellformedness and some rudimentary constraints
+on the XML structure insofar as needed to
+
+* generate suitable URLs to call the right scripts
+* handle EPP <login> and <logout> commands
+* extract authentication information from the request
+
+
+
+
+RATIONALE
+
+EPP is an XML-based protocol, but it does not utilize one of the common
+XML based transaction protocols like SOAP, XML-RPC or HTTP. Writing
+an EPP server is thus not a simple exercise as all the server
+infrastructure (authentication, logging, security, build-system,
+portability, ...) cannot be based on a well established framework.
+In our opinion, this is the main reason why there is no
+open source implementation of server-side EPP.
+
+Fortunately, the Apache 2.0 HTTP server is versatile and flexible
+enough to accommodate other protocols than HTTP through
+the "Module" extension mechanism. As part of Apache's support
+for DAV, a basic set of XML parsing and handling is already
+included in the Apache framework.
+
+
+
+IMPLEMENTATION
+
+mod_epp implements an Apache 2.0 "input filter" which reads
+EPP frames (as encapsulated according to the EPP/TCP spec),
+does some rudimentary XML parsing and converts the data to
+a normal Apache request object which can be handled by the
+e.g. a CGI handler.
+
+The actual EPP command (as XML text) is passed to the handler encoded as
+HTTP form-encoded data, which makes it accessible to normal HTML form
+scripting environments.
+
+On the output side, mod_epp installs an "output filter" which will
+encapsulate the output of the actual EPP processor (e.g. the CGI-script)
+in an EPP/TCP frame.
+
+
+
+INSTALLATION
+
+Unpack the distribution and run:
+
+apxs -a -c -i mod_epp.c
+
+The -a should put something like
+
+LoadModule epp_module         modules/mod_epp.so
+
+into your httpd.conf file to load the module.
+
+See the man page of apxs (part of the Apache 2.0 httpd distribution)
+or http://www.onlamp.com/topics/apache/apache_modules for further
+information on compiling and installing Apache modules.
+
+The mod_epp module does not replace the HTTP functionality
+of Apache 2.0, the server can still be used to serve web pages
+on a different port.
+
+
+
+
+CONFIGURATION
+
+All configuration is done inside the mail Apache config
+file "httpd.conf". First of all, we need to tell Apache to listen
+on the EPP port:
+
+# from: http://www.iana.org/assignments/port-numbers
+# epp-temp        3121/tcp   Extensible Provisioning Protocol
+Listen  3121
+
+To activate mod_epp for this port we use:
+
+<VirtualHost *:3121>
+EPPProtocol On
+</VirtualHost>
+
+Inside the <VirtualHost> context you can specify further 
+parameters concerning mod_epp (listed here with the defaults):
+
+EPPXMLParseError        /epp/error/xmlparsing
+EPPXMLNotEPP            /epp/error/schema
+EPPCommandRoot          /epp/command
+
+Detailed description:
+
+EPPXMLParseError specifies which path (url space!) to call when the XML
+	parsing failed for the received EPP message.
+
+EPPXMLNotEPP specifies what to call when mod_epp cannot make sense of
+	the XML tree.
+
+EPPCommandRoot defines how mod_epp will build the path to the script
+	handling any command. If the EPP message contained e.g.
+	<epp> <command> <foobar/> </command> </epp>
+	then it will use "$EPPCommandRoot/foobar".
+
+
+
+AUTHOR
+
+This module is currently developed by Otmar Lendl under contract
+from NIC.at. You can reach the author at lendl@nic.at.
+
+
+
+LICENCE
+
+We intend to release this module under the Apache licence.  The
+formalities have not been worked out yet, so please consider this to be
+a preliminary release in both code and licence. ;-)
+
+
