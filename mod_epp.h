@@ -104,6 +104,9 @@ typedef struct epp_user_rec {
     int connection_close;	/* did a script signal Connection: close ? */
     int failed_logins;
 
+/* give the filter a chance to find the current request object */
+    struct epp_rec *er;	
+
 } epp_user_rec;
 
 

@@ -104,7 +104,8 @@ r->request_config  = ap_create_request_config(r->pool);
 ap_run_create_request(r);
 r->per_dir_config  = r->server->lookup_defaults;
 
-r->sent_bodyct     = 0;                      /* bytect isn't for body */
+r->sent_bodyct     = 1;
+r->bytes_sent	   = 0;
 
 r->output_filters  = ur->c->output_filters;
 r->input_filters   = ur->c->input_filters;
@@ -297,6 +298,7 @@ epp_conn_rec *conf = er->ur->conf;
 
 
 r = epp_create_request(er->ur);
+er->r = r;
 
 e = (errmsg) ? ap_escape_uri(r->pool, errmsg) : "";
 id = (cltrid) ? ap_escape_uri(r->pool, cltrid) : "";
@@ -397,6 +399,7 @@ passwd = apr_psprintf(er->pool, "%s:%s", clid, pw);
 er->ur->auth_string = apr_psprintf(er->ur->pool, "Basic %s", ap_pbase64encode(er->ur->pool, passwd));
 
 r = epp_create_request(er->ur);
+er->r = r;
 apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
 
 r->the_request	= (char *) er->ur->conf->authuri;
@@ -412,7 +415,7 @@ r->protocol        = "INCLUDED";
  */
 if ((res = ap_process_request_internal(r)) == OK) 
 	{
-	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
 		"epp_login (success): after ap_process_request_internal: res = %d", res);
 
 	er->ur->authenticated = 1;
@@ -423,7 +426,7 @@ if ((res = ap_process_request_internal(r)) == OK)
 	}
 else
 	{
-	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
 		"epp_login (fail): after ap_process_request_internal: res = %d", res);
 
 	er->ur->authenticated = 0;
@@ -550,6 +553,7 @@ else			/* translation failed. we have an error uri. no need for the checks. */
 
 
 	r = epp_create_request(er->ur);
+	er->r = r;
 	
         apr_xml_to_text(r->pool,doc->root,APR_XML_X2T_FULL_NS_LANG, doc->namespaces ,NULL, &er->serialised_xml, 
 				&er->serialised_xml_size);
@@ -645,6 +649,7 @@ char uri[200];
 
 apr_snprintf(uri, sizeof(uri), "%s/hello?frame=%s", conf->session_root, EPP_BUILTIN_HELLO);
 r = epp_create_request(er->ur);
+er->r = r;
 ap_parse_uri(r, uri);
 
 r->assbackwards    = 0;		/* I don't want headers. */
@@ -712,6 +717,7 @@ static int epp_process_connection(conn_rec *c)
     ur->failed_logins 	= 0;
     ur->connection_close= 0;
     ur->conf	= conf;
+    ur->er	= NULL;
 
     ap_add_output_filter("EPPTCP_OUTPUT", (void *) ur, NULL, c);
 
@@ -727,6 +733,7 @@ static int epp_process_connection(conn_rec *c)
     er = apr_palloc(p_er, sizeof(*er));
     er->pool = p_er;
     er->ur = ur;
+    ur->er = er;
     er->bb_out = bb_out;
     rv = epp_do_hello(er);
 
@@ -767,6 +774,7 @@ static int epp_process_connection(conn_rec *c)
 			er = apr_palloc(p, sizeof(*er));
 			er->pool = p;
 			er->ur = ur;
+    			ur->er = er;
 			er->bb_out = bb_out;
 
 			er->orig_xml = EPP_BUILTIN_TIMEOUT;
@@ -833,6 +841,7 @@ static int epp_process_connection(conn_rec *c)
     	er = apr_palloc(p_er, sizeof(*er));
 	er->pool = p_er;
 	er->ur = ur;
+	ur->er = er;
 	er->bb_out = bb_out;
 
     	xml = apr_palloc(er->pool, framelen + 1);
@@ -927,21 +936,27 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     const char *pos;
     unsigned long len;
     apr_off_t bb_len;
- 
+    request_rec *r;
+
     epp_user_rec *ur = f->ctx;
 
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-    	"epp_tcp_out_filter: entering.");
-
-/*    sleep(5); */
+    r = ur->er->r;
+/*    ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
+    	"epp_tcp_out_filter: entering. %ld", ur->er->orig_xml_size );
+*/
 
     rv = apr_brigade_length(bb, 1, &bb_len);
     len = htonl(bb_len + 4);		/* len includes itself */
 
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-    	"epp_tcp_out_filter: %ld bytes in brigade.", bb_len);
-    if (bb_len > 0)
+    /*
+     * prefix only if we have data and no error message.
+     */
+    if ((bb_len > 0) && (r->status == 200))
 	{
+    	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+    		"epp_tcp_out_filter: Prefix = %ld bytes.", bb_len);
+
+	r->bytes_sent += bb_len; 
 	header = apr_bucket_transient_create((char *) &len, 4,  f->c->bucket_alloc);
 	apr_bucket_setaside(header, f->c->pool);
 	APR_BRIGADE_INSERT_HEAD(bb, header);
@@ -951,6 +966,17 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	 */
 	flush = apr_bucket_flush_create(f->c->bucket_alloc);
 	APR_BRIGADE_INSERT_TAIL(bb, flush);
+	}
+    else
+	{
+	/*
+	 * we don't have to actually read the buckets to clean the content as
+	 * apr_brigade_length did that for us.
+	 */
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+    		"epp_tcp_out_filter: skipping data (%ld bytes), status = %d.", bb_len, r->status);
+
+        apr_brigade_cleanup(bb);
 	}
 
     return ap_pass_brigade(f->next, bb);
