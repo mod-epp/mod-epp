@@ -298,6 +298,7 @@ r->assbackwards    = 0;		/* I don't want headers. */
 r->method          = "GET";
 r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
+r->the_request     = "--mod_epp--error_handler--";
 
 ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection);
 ap_process_request(r);
@@ -570,6 +571,8 @@ r->assbackwards    = 0;		/* I don't want headers. */
 r->method          = "GET";
 r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
+r->the_request     = uri;	/* make sure the logging is correct */
+
 
 ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection); 
 ap_process_request(r);
@@ -816,7 +819,7 @@ close_connection:
 static apr_status_t epp_tcp_out_filter(ap_filter_t * f, 
                                            apr_bucket_brigade * bb)
 {
-    apr_bucket *header;
+    apr_bucket *header, *flush;
     apr_status_t rv;
     const char *buf;
     const char *pos;
@@ -833,6 +836,12 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	header = apr_bucket_transient_create((char *) &len, 4,  f->c->bucket_alloc);
 	apr_bucket_setaside(header, f->c->pool);
 	APR_BRIGADE_INSERT_HEAD(bb, header);
+
+	/*
+	 * make sure the data is flushed to the client.
+	 */
+	flush = apr_bucket_flush_create(f->c->bucket_alloc);
+	APR_BRIGADE_INSERT_TAIL(bb, flush);
 	}
 
     return ap_pass_brigade(f->next, bb);
