@@ -129,6 +129,12 @@ EPPCommandRoot defines how mod_epp will build the path to the script
 	<epp> <command> <foobar/> </command> </epp>
 	then it will use "$EPPCommandRoot/foobar".
 
+	This is URL-Space! If you want to map to static files,
+	use a path relativ to DocumentRoot. If you want to
+	point to CGI scripts, you need a "ScriptAlias" directive
+	to map that URL-space directory to a file-system directory
+	containing the actual scripts.
+
 EPPSessionRoot defines how mod_epp will build the path to the script
 	handling any session handling events. This includes
 	"hello", "login", "logout" and "bye".
@@ -369,7 +375,8 @@ to a different server:
 	</VirtualHost>
 
 Authentication information will be passed using an
-"Authorization: Basic" header.
+"Authorization: Basic" header. The connection close mechanism does not
+seem to work in this setup. I'm investigating an alternative.
 
 AUTHOR
 ------
