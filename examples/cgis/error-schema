@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+
+#
+# This is a specific error script for schema errors.
+# It is called if mod_epp cannot find required tags.
+#
+use CGI qw/:standard/;
+
+$q = new CGI;
+
+
+my $cltrid = $q->param("cltrid");
+my $code = $q->param("code");
+my $msg = $q->param("msg");
+
+$cltrid = "non-specified" unless (defined($cltrid));
+$code = 2400 unless (defined($code));
+$msg = "generic error" unless (defined($msg));
+
+my $debug = 0;
+
+my $close = "";
+
+$close  = "Connection: close\r\n" if ($code =~ /^\d5\d\d$/);
+	
+
+print "Content-Type: text/plain\r\n$close\r\n";
+
+
+print <<EOM;
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<!-- EPP schema ERROR: mod_epp could not parse your request. -->
+
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <response>
+    <result code="$code">
+      <msg>$msg</msg>
+    </result>
+    <trID>
+      <clTRID>$cltrid</clTRID>
+    </trID>
+  </response>
+</epp>
+EOM
+

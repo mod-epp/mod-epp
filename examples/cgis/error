@@ -1,0 +1,74 @@
+#!/usr/bin/perl
+
+#
+# This is a generic error code script. it tries reasonably hard
+# to deliver a standard-conform error message.
+#
+# Notice how clTRID, error code and message are passed to the script
+# as CGI parameters.
+#
+# We try to signal "close connection" to mod_epp on certain
+# error conditions.
+#
+use CGI qw/:standard/;
+
+$q = new CGI;
+
+
+my $cltrid = $q->param("cltrid");
+my $code = $q->param("code");
+my $msg = $q->param("msg");
+
+$cltrid = "non-specified" unless (defined($cltrid));
+$code = 2400 unless (defined($code));
+$msg = "generic error" unless (defined($msg));
+
+my $debug = 0;
+
+my $close = "";
+
+$close  = "Connection: close\r\n" if ($code =~ /^\d5\d\d$/);
+	
+
+print "Content-Type: text/plain\r\n$close\r\n";
+
+
+print <<EOM;
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <response>
+    <result code="$code">
+      <msg>$msg</msg>
+    </result>
+    <trID>
+      <clTRID>$cltrid</clTRID>
+    </trID>
+  </response>
+</epp>
+EOM
+
+exit(0) unless ($debug);
+
+print "<!-- THIS IS THE SESSION SCRIPT\n\nEnvironment: \n";
+
+print map { "$_\t$ENV{$_}\n"} (sort keys(ENV));
+
+
+print "\n\nCGI parameters: \n";
+@names = $q->param;
+print map { "$_\t" . $q->param($_) . "\n"} (@names);
+
+
+
+print "\n\nSTDIN:\n";
+
+while(<STDIN>)
+	{ print }
+
+print "\nEnd of STDIN\n";
+
+print "Length of epp frame is: ", length($q->param("frame")), " bytes.\n-->\n";
+

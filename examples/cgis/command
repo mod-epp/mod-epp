@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+
+#
+# dummy EPP command catchall script. We use it to signal "not implemented"
+# 
+use CGI qw/:standard/;
+
+$q = new CGI;
+
+
+print "Content-Type: text/plain\r\n\r\n";
+
+print <<EOH;
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+EOH
+
+print "\n<!-- This is the command catchall script \n\n";
+print "\tInteresting ENV parameters:\n";
+print map { "\t\t$_\t$ENV{$_}\n"} ( qw{ QUERY_STRING REMOTE_ADDR REQUEST_URI SCRIPT_NAME });
+print "  -->";
+
+
+
+my $cltrid = $q->param("clTRID");
+$cltrid = "not-given" unless (defined($cltrid));
+
+print <<EOM;
+
+  <response>
+    <result code="2101">
+      <msg lang="en">Command not implemented.</msg>
+    </result>
+    <trID>
+      <clTRID>$cltrid</clTRID>
+    </trID>
+  </response>
+EOM
+
+print "\n</epp>";
+

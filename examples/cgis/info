@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+
+#
+# dummy EPP info command.
+# 
+use CGI qw/:standard/;
+
+$q = new CGI;
+
+
+print "Content-Type: text/plain\r\n\r\n";
+
+print <<EOH;
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+EOH
+
+print "\n<!-- This is the info script -->\n\n";
+
+
+my $cltrid = $q->param("clTRID");
+$cltrid = "not-given" unless (defined($cltrid));
+
+print <<EOM;
+
+  <response>
+    <result code="1000">
+      <msg lang="en">This is just a dummy example from the rfc-draft.</msg>
+    </result>
+
+	<resData>
+	  <obj:infData xmlns:obj="urn:ietf:params:xml:ns:obj"
+	  xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+	  <obj:roid>EXAMPLE1-REP</obj:roid>
+	  <!-- Object-specific elements. -->
+	</obj:infData>
+	</resData>
+
+    <trID>
+      <clTRID>$cltrid</clTRID>
+    </trID>
+  </response>
+EOM
+
+print "\n</epp>";
+
