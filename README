@@ -6,7 +6,7 @@ OVERVIEW
 --------
 
 This module implements the EPP over TCP protocol as defined
-in draft-ietf-provreg-epp-07.txt and draft-ietf-provreg-epp-tcp-05.txt
+in draft-ietf-provreg-epp-0(6|7).txt and draft-ietf-provreg-epp-tcp-05.txt
 as an Apache 2.0 module. This is *not* a full implementation
 of EPP, this module just makes it possible to write an EPP
 server as a set of CGI scripts.
@@ -45,11 +45,11 @@ included in the Apache framework.
 IMPLEMENTATION
 --------------
 
-mod_epp implements an Apache 2.0 "input filter" which reads
+mod_epp implements an Apache 2.0 "connection handler" which reads
 EPP frames (as encapsulated according to the EPP/TCP spec),
 does some rudimentary XML parsing and converts the data to
 a normal Apache request object which can be handled by the
-e.g. a CGI handler.
+e.g. a CGI script.
 
 The actual EPP command (as XML text) is passed to the handler encoded as
 HTTP form-encoded data, which makes it accessible to normal HTML form
@@ -96,8 +96,10 @@ CONFIGURATION
 -------------
 
 All configuration is done inside the mail Apache config
-file "httpd.conf". First of all, we need to tell Apache to listen
-on the EPP port:
+file "httpd.conf". See also the comments in the example
+file which is included in the mod_epp distribution.
+
+First of all, we need to tell Apache to listen on the EPP port:
 
 # from: http://www.iana.org/assignments/port-numbers
 # epp-temp        3121/tcp   Extensible Provisioning Protocol
@@ -260,6 +262,9 @@ responses to common EPP queries. They are *not* useful for any
 real purposes. A sample implementation of a real EPP server
 is outside the scope of mod_epp; please see 
 http://sourceforge.net/projects/aepps/ for such scripts.
+
+A *VERY* basic set of demonstration scripts are in the
+examples directory.
 
 
 AUTHOR

@@ -460,6 +460,7 @@ char errstr[300];
 request_rec *r, *rr;
 int retval;
 epp_conn_rec *conf = er->ur->conf;
+const char *connection;
 
 char uri[200];
 char content_length[20];
@@ -495,44 +496,48 @@ if (rv != APR_SUCCESS)
 	return;
 	}
 
-epp_translate_xml_to_uri(doc, uri, sizeof(uri), er, &builtin);
+rv = epp_translate_xml_to_uri(doc, uri, sizeof(uri), er, &builtin);
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 	"Translated EPP to %s", uri);
 
-
 /* XXX this needs to be rewritten */
 
-rv = APR_SUCCESS;
-if (builtin && !strcmp("login",builtin->name))
-{
-	rv = epp_login(er, builtin);
-	if (rv != APR_SUCCESS)
+if (rv == APR_SUCCESS)		/* ok, we got a successfull translation */
+	{
+	rv = APR_SUCCESS;
+	if (builtin && !strcmp("login",builtin->name))
 		{
-		epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
+		rv = epp_login(er, builtin);
+		if (rv != APR_SUCCESS)
+			{
+			epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
+			return;
+			}
+		}
+
+	if (builtin && !strcmp("logout",builtin->name))
+		{
+		rv = epp_logout(er, builtin);
+		}
+
+	if (rv != APR_SUCCESS)	/* something went wrong with the builtins */
+		{
+		epp_error_handler(er, "protocol", 2001, er->cltrid, "Protocol error.");
 		return;
 		}
 
-}
 
-if (builtin && !strcmp("logout",builtin->name))
-{
-	rv = epp_logout(er, builtin);
-}
-
-if (rv != APR_SUCCESS)	/* something went wrong with the builtins */
-{
-	epp_error_handler(er, "protocol", 2001, er->cltrid, "Protocol error.");
-	return;
-}
-
-
-if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builtin requires auth */
-{
-	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
-		"I can't call %s without prior login.", uri);
-	epp_error_handler(er, "authrequired", 2002, er->cltrid, "You need to login first.");
-	return;
-}
+	if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builtin requires auth */
+		{
+		ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
+			"I can't call %s without prior login.", uri);
+		epp_error_handler(er, "authrequired", 2002, er->cltrid, "You need to login first.");
+		return;
+		}
+	}
+else			/* translation failed. we have an error uri. no need for the checks. */
+	{
+	}
 
 
 /*
@@ -598,9 +603,21 @@ if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builti
 	 */
 	if (r->status != HTTP_OK)
 		{
-		ap_fputs(er->ur->c->output_filters, er->bb_out, "<epp> ERROR </epp>");
-		ap_fflush(er->ur->c->output_filters, er->bb_out);
+		ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
+			"Could not execute %s", uri);
+		epp_error_handler(er, "internal", 2400, NULL, "Internal error.");
 		}
+
+	connection = apr_table_get(r->err_headers_out, "Connection");
+
+	if (connection && !strncmp(connection, "close", 5))
+		{
+		er->ur->connection_close = 1;
+		ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+			"CGI requested a connection close");
+		}
+
+
 
 	apr_pool_destroy(r->pool);
 }
@@ -681,8 +698,6 @@ static int epp_process_connection(conn_rec *c)
     }
 
     ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
-    ap_add_output_filter("EPPTCP_OUTPUT", NULL, NULL, c);
-/*     ap_add_input_filter("EPPTCP_INPUT", NULL, NULL, c); */
 
     apr_pool_create(&p, c->pool);
     ur 		= apr_palloc(p, sizeof(*ur));
@@ -690,8 +705,10 @@ static int epp_process_connection(conn_rec *c)
     ur->c 	= c;
     ur->authenticated 	= 0;
     ur->failed_logins 	= 0;
+    ur->connection_close= 0;
     ur->conf	= conf;
 
+    ap_add_output_filter("EPPTCP_OUTPUT", (void *) ur, NULL, c);
 
     /* create the brigades */
 
@@ -868,6 +885,12 @@ static int epp_process_connection(conn_rec *c)
 	apr_brigade_length(bb_in, 1, &bb_len);
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
 		"Finished processing EPP frame. %ld bytes left in brigade.", bb_len);
+
+	if (ur->connection_close)
+		{
+		ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL, "Closing connection.");
+		break;
+		}
 	}
 
 close_connection:
@@ -888,6 +911,8 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     unsigned long len;
     apr_off_t bb_len;
  
+    epp_user_rec *ur = f->ctx;
+
     rv = apr_brigade_length(bb, 1, &bb_len);
     len = htonl(bb_len + 4);		/* len includes itself */
 

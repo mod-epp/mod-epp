@@ -101,6 +101,7 @@ typedef struct epp_user_rec {
     char *auth_string;
 
     int authenticated;
+    int connection_close;	/* did a script signal Connection: close ? */
     int failed_logins;
 
 } epp_user_rec;

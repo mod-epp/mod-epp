@@ -97,6 +97,7 @@ somewhat organised and focused.
 	Done for most parts.
 * defined interface to cgis on when to close the connection.
 * check the timeout / connection close code
-
-
+* configuration finetuning.
+	i.e. allow for global defs and merge in Vhost specific changes.
+* generate a session identifier and pass it as Cookie to the scripts..
 
