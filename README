@@ -91,6 +91,9 @@ If you turn on StdEnvVars, you might run into a core dump. Please
 have a look at http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057
 for a possible workaround.
 
+mod_epp triggers a bug in mod_epp. See 
+http://nagoya.apache.org/bugzilla/show_bug.cgi?id=18339
+for more information including a patch.
 
 
 CONFIGURATION
@@ -257,8 +260,21 @@ something like this:
 Bug Alert: The client CERT does not show up in the first
 (fake) hello request.
 
-Bug Alert 2: Please have a look at 
-	http://nagoya.apache.org/bugzilla/show_bug.cgi?id=18339
+Bug Alert 2: If there are any SSL negotiation or configuration
+problems, the Apache process might dump core. Please have a look at 
+http://nagoya.apache.org/bugzilla/show_bug.cgi?id=18339 where I 
+propose the following patch to Apache 2.0.44:
+
+--- httpd-2.0.44/modules/ssl/ssl_engine_io.c.old    Mon Jan 13 18:35:22 2003
++++ httpd-2.0.44/modules/ssl/ssl_engine_io.c        Tue Mar 25 21:07:47 2003
+@@ -997,6 +997,7 @@
+     SSL_free(ssl);
+     sslconn->ssl = NULL;
+     filter_ctx->pssl = NULL; /* so filters know we've been shutdown */
++    c->aborted = 1;
+
+     return APR_SUCCESS;
+ }
 
 
 REQUEST/SCRIPT INTERFACE
