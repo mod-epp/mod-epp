@@ -23,7 +23,7 @@ $cltrid = "non-specified" unless (defined($cltrid));
 $code = 2400 unless (defined($code));
 $msg = "generic error" unless (defined($msg));
 
-my $debug = 0;
+my $debug = 1;
 
 my $close = "";
 
@@ -52,7 +52,7 @@ EOM
 
 exit(0) unless ($debug);
 
-print "<!-- THIS IS THE SESSION SCRIPT\n\nEnvironment: \n";
+print "\n\n<!-- THIS IS THE ERROR SCRIPT GIVING DEBUG OUTPUT\n\nEnvironment: \n";
 
 print map { "$_\t$ENV{$_}\n"} (sort keys(ENV));
 

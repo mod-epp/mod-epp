@@ -18,8 +18,8 @@
  *
  * 3. The end-user documentation included with the redistribution,
  *    if any, must include the following acknowledgment:
- *    "This product includes software developed by the
- *    NIC.at Internet Verwaltungs- und Betriebsgesellschaft m. b. H."
+ *        "This product includes software developed by the
+ *        NIC.at Internet Verwaltungs- und Betriebsgesellschaft m. b. H."
  *    Alternately, this acknowledgment may appear in the software itself,
  *    if and wherever such third-party acknowledgments normally appear.
  *
@@ -365,6 +365,9 @@ if (r->status != HTTP_OK)	/* something wrong with the script runtime? Go for sim
 	ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS , NULL,
 		"epp_error_handler: calling %s failed.", req);
 
+	r->status = HTTP_OK;	/* tell the output filter that this error 
+				   should be framed and not discarded */
+
 	apr_snprintf(req, sizeof(req), "%s\n<response><result code=\"%d\"><msg>%s</msg>\n</result><trID>%s</trID></response></epp>", 
 			EPP_BUILTIN_ERROR_HEAD,
 			code, e, id_xml);
@@ -703,6 +706,11 @@ ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection);
 ap_process_request(r);
 if (ap_extended_status)
 	ap_increment_counts(r->connection->sbh, r);
+
+if (r->connection->aborted)	/* probably a SSL error. */
+	{
+	return(r->status);
+	}
 
 if (r->status != HTTP_OK)	/* something wrong with the script runtime */
 	{
