@@ -35,7 +35,6 @@
 
 module AP_MODULE_DECLARE_DATA epp_module;
 
-static epp_rec greeting_rec;
 
 /* from mod_jabber */
 
@@ -125,8 +124,6 @@ return r;
 apr_status_t epp_get_cltrid(epp_rec *er)
 {
 apr_xml_elem *id,*root,*e;
-apr_text *t;
-size_t n;
 
 /* default to no cltrid */
 er->cltrid[0] = 0;
@@ -198,7 +195,7 @@ return(APR_SUCCESS);
 apr_status_t epp_translate_xml_to_uri(apr_xml_doc *doc, epp_rec *er, 
 		char *path, apr_size_t path_size, apr_xml_elem **element, int *login_needed)
 {
-apr_xml_elem *cred, *command, *c, *hello;
+apr_xml_elem *command, *c, *hello;
 epp_conn_rec *conf = er->ur->conf;
 
 /*
@@ -291,7 +288,7 @@ return(APR_BADARG);
  */
 apr_status_t epp_error_handler(epp_rec *er, char *script, int code, char *cltrid, char *errmsg)
 {
-request_rec *r, *rr;
+request_rec *r;
 char req[400];
 char *e, *id;
 char id_xml[100] = "";
@@ -358,7 +355,6 @@ char clid[CLIDSIZE];
 char pw[PWSIZE];
 char *passwd;
 request_rec *r;
-int retval;
 apr_status_t res;
 
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
@@ -475,7 +471,7 @@ return(APR_SUCCESS);
  * object and call it.
  *
  */
-epp_process_frame(epp_rec *er)
+void epp_process_frame(epp_rec *er)
 {
 apr_xml_parser *xml_p;
 apr_xml_doc *doc;
@@ -483,9 +479,7 @@ apr_xml_elem *tag = NULL;
 int login_needed;
 apr_status_t rv;
 char errstr[300];
-request_rec *r, *rr;
-int retval;
-epp_conn_rec *conf = er->ur->conf;
+request_rec *r;
 const char *connection;
 
 char uri[200];
@@ -651,9 +645,7 @@ apr_pool_destroy(r->pool);
  */
 apr_status_t epp_do_hello(epp_rec *er)
 {
-apr_status_t rv;
 request_rec *r;
-int retval;
 epp_conn_rec *conf = er->ur->conf;
 
 char uri[200];
@@ -733,37 +725,36 @@ apr_brigade_destroy(bb);
 return APR_SUCCESS;
 }
 
+/*
+ *
+ * This is the main conncetion handler.
+ *
+ * It first fires off the greeting, then loops over all incoming
+ * EPP requests.
+ *
+ */
 static int epp_process_connection(conn_rec *c)
 {
     server_rec *s = c->base_server;
-    request_rec *r;
     epp_user_rec *ur;
     epp_rec *er;
-    epp_rec greeting_er;
     unsigned long framelen, framelen_n;
     apr_pool_t *p, *p_er;
     apr_bucket_brigade *bb_in;
     apr_bucket_brigade *bb_out;
-    apr_bucket *e,*prev_e,*next_e;
     apr_status_t rv;
-    apr_off_t bb_len;
-
-
-    int count =  0;
-    const char *str;
-    apr_size_t len;
 
     char *xml;
-
 
     epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
                                                               &epp_module);
 
+/*
+ * If EPP isn't turned on, then we decline here and thus fall back to HTTP.
+ */
     if (!conf->epp_on) {
         return DECLINED;
     }
-
-/*    apr_pool_tag(c->pool, "epp_connection_pool"); */
 
     ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
 
@@ -840,7 +831,7 @@ static int epp_process_connection(conn_rec *c)
 	framelen   = ntohl(framelen_n) - EPP_TCP_HEADER_SIZE;
 
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"HEADER: length = %u.",framelen);
+		"HEADER: length = %lu.",framelen);
 
 	if (framelen > EPP_MAX_FRAME_SIZE)
 	{
@@ -849,7 +840,9 @@ static int epp_process_connection(conn_rec *c)
 		APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 		ap_pass_brigade(c->output_filters, bb_out);
 		break;
-		/* XXX todo: send a meaningfull error message. */
+		/* This will close the connection. According to the EPP standards
+		 * we are *not* supposed to tell the client why we closed the connection.
+		 */
 	}
 
     	xml = apr_palloc(er->pool, framelen + 1);
@@ -858,6 +851,9 @@ static int epp_process_connection(conn_rec *c)
 	er->orig_xml_size = framelen;
     	ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
 
+/*
+ * read the XML.
+ */
 	rv = epp_read(c, p_er, xml, framelen);
 	if (rv != APR_SUCCESS)
 		{
@@ -868,8 +864,6 @@ static int epp_process_connection(conn_rec *c)
 		break;
 		}
 	xml[framelen] = '\0';		/* just to be sure it's terminated. */
-
-/*	fprintf(stderr, "Read %ld bytes of XML: \n--->%s<----\n", framelen, xml); */
 
 /*
  * Do the actual work.
@@ -901,8 +895,6 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 {
     apr_bucket *header, *flush;
     apr_status_t rv;
-    const char *buf;
-    const char *pos;
     unsigned long len;
     apr_off_t bb_len;
     request_rec *r;
@@ -954,19 +946,15 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 
 
 /*
- * This input filter always returns EOS
+ * This input filter always returns EOS.
+ *
+ * We need this one one GET requests to avoid scripts reading from
+ * our connection to the client.
  *
  */
 static apr_status_t eos_in_filter(ap_filter_t * f, apr_bucket_brigade * bb,
 		 ap_input_mode_t mode, apr_read_type_e block, apr_off_t readbytes)
 {
-    apr_bucket *header;
-    apr_status_t rv;
-    const char *buf;
-    const char *pos;
-    unsigned long len;
-    apr_off_t bb_len;
-
     APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_eos_create(f->r->connection->bucket_alloc));
 
     return APR_SUCCESS;
@@ -981,12 +969,6 @@ static apr_status_t eos_in_filter(ap_filter_t * f, apr_bucket_brigade * bb,
 static apr_status_t epp_xmlstdin_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 		 ap_input_mode_t mode, apr_read_type_e block, apr_off_t readbytes)
 {
-    apr_bucket *header;
-    apr_status_t rv;
-    const char *buf;
-    const char *pos;
-    unsigned long len;
-    apr_off_t bb_len;
     apr_xml_doc *doc = f->ctx;
     const char *target = NULL;
     apr_size_t tsize;
@@ -1020,12 +1002,6 @@ static apr_status_t epp_xmlstdin_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 		 ap_input_mode_t mode, apr_read_type_e block, apr_off_t readbytes)
 {
-    apr_bucket *header;
-    apr_status_t rv;
-    const char *buf;
-    const char *pos;
-    unsigned long len;
-    apr_off_t bb_len;
     epp_rec *er = f->ctx;
 
     if (er->serialised_xml_size > 0)
@@ -1165,8 +1141,10 @@ static const char *set_epp_version(cmd_parms *cmd, void *dummy, const char *arg)
 	    conf->epp_version = 6;
     else if (arg[0] == '7')
 	    conf->epp_version = 7;
+    else if (arg[0] == '8')
+	    conf->epp_version = 8;
     else
-	    return("EPP Version must 6 or 7.");
+	    return("EPP Version must 6, 7, or 8.");
 
     return NULL;
 }
@@ -1198,50 +1176,4 @@ module AP_MODULE_DECLARE_DATA epp_module = {
     epp_cmds,			/* command apr_table_t */
     register_hooks		/* register hooks */
 };
-
-
-/* HALDE **************************/
-
-
-
-/*
-if(strcmp("epp",doc->root->name))
-	{
-	ap_epp_tcp_sendelement(f, bb, "<error>Not epp</error>\n");
-	return;
-	}
-
-command = get_elem(doc->root->first_child, "command");
-if (command == NULL)
-	{
-	ap_epp_tcp_sendelement(f, bb, "<error>no command?</error>\n");
-        return;
-	}
-
-c = command->first_child;
-while (c != NULL)
-{
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"XML: found command = %s.", c->name);
-	c = c->next;
-}
-
-cred = get_elem(command->first_child, "cred");
-
-
-apr_status_t ap_epp_tcp_sendelement(ap_filter_t *f, apr_bucket_brigade *bb, char *e)   
-{
-unsigned long len;
-apr_status_t rv;
- 
-len = htonl(strlen(e) + 4);		
-
-rv = ap_fputs(f, bb, e);
-
-rv = ap_fflush(f, bb);
-
-return(rv);
-}
-
-*/
 

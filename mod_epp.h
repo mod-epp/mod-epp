@@ -43,7 +43,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 #define EPP_DEFAULT_COMMAND_ROOT "/epp/command"
 #define EPP_DEFAULT_SESSION_ROOT "/epp/session"
 #define EPP_DEFAULT_ERROR_ROOT "/epp/error"
-#define EPP_DEFAULT_VERSION 7
+#define EPP_DEFAULT_VERSION 8
 
 
 #define EPP_CONTENT_TYPE_CGI "multipart/form-data; boundary=--BOUNDARY--"
