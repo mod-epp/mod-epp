@@ -838,7 +838,7 @@ static int epp_process_connection(conn_rec *c)
 
     epp_make_cookie(ur);
 
-    ap_add_output_filter("EPPTCP_OUTPUT", (void *) ur, NULL, c);
+    ap_add_output_filter("EPPTCP_OUTPUT", (void *) ur, NULL, c); 
 
     /* create the brigades */
 
@@ -962,18 +962,37 @@ static int epp_process_connection(conn_rec *c)
 static apr_status_t epp_tcp_out_filter(ap_filter_t * f, 
                                            apr_bucket_brigade * bb)
 {
-    apr_bucket *header, *flush;
-    apr_status_t rv;
+    apr_bucket *header, *flush, *bucket;
+    apr_status_t rv = APR_SUCCESS;
     unsigned long len;
     apr_off_t bb_len;
     request_rec *r;
 
     epp_user_rec *ur = f->ctx;
-
     r = ur->er->r;
-/*    ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
+
+/*
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
     	"epp_tcp_out_filter: entering. %ld", ur->er->orig_xml_size );
 */
+
+
+    /*
+     * make sure the data is flushed to the client.
+     */
+    flush = apr_bucket_flush_create(f->c->bucket_alloc); 
+    for (bucket = APR_BRIGADE_FIRST(bb);
+	bucket != APR_BRIGADE_SENTINEL(bb);
+	bucket = APR_BUCKET_NEXT(bucket)) {
+
+	if (APR_BUCKET_IS_EOS(bucket)) {
+    		ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+    			"epp_tcp_out_filter: Found an EOS bucket. Adding a FLUSH before it.");
+		APR_BUCKET_INSERT_BEFORE(bucket, flush);
+		break;
+	}
+    }
+
 
     rv = apr_brigade_length(bb, 1, &bb_len);
     len = htonl(bb_len + 4);		/* len includes itself */
@@ -990,12 +1009,6 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	header = apr_bucket_transient_create((char *) &len, 4,  f->c->bucket_alloc);
 	apr_bucket_setaside(header, f->c->pool);
 	APR_BRIGADE_INSERT_HEAD(bb, header);
-
-	/*
-	 * make sure the data is flushed to the client.
-	 */
-	flush = apr_bucket_flush_create(f->c->bucket_alloc);
-	APR_BRIGADE_INSERT_TAIL(bb, flush);
 	}
     else
 	{
@@ -1085,6 +1098,7 @@ static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 		f->r->pool,f->r->connection->bucket_alloc));
 	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_POSTFIX_CGI, 
 				strlen(EPP_CONTENT_POSTFIX_CGI), f->r->connection->bucket_alloc));
+	er->serialised_xml_size = 0;    /* don't send content twice if called twice. */
 	}
 
     APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_eos_create(f->r->connection->bucket_alloc));
