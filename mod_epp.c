@@ -97,6 +97,72 @@ return r;
 }
 
 /*
+ * Take an epp request struct and try to find the clTRID.
+ *
+ */
+apr_status_t epp_get_cltrid(epp_rec *er)
+{
+apr_xml_elem *id,*root,*e;
+apr_text *t;
+size_t n;
+
+/* default to no cltrid */
+er->cltrid[0] = 0;
+
+root = er->doc->root;
+
+if(strcmp("epp",root->name))
+	return(APR_BADARG);
+
+/*
+ * got to first level below root.
+ */
+e = root->first_child;
+if (e == NULL)
+	return(APR_BADARG);
+
+/*
+ * there should be exactly one element below <epp> ...
+ */
+if (e->next != NULL)
+	return(APR_BADARG);
+
+/*
+ * ... and it should not be "clTRID".
+ */
+if(!strcmp("clTRID",e->name))
+	return(APR_BADARG);
+
+
+id = get_elem(e->first_child, "clTRID");
+if (id == NULL)
+	{
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"EPP: did not find a clTRID.");
+	return(APR_SUCCESS);
+	}
+
+/*
+ * actually, this is probably overkill, we just get < 64 chars
+ * in one text entry as we xml-parse in one go.
+ */
+
+n = sizeof(er->cltrid) - 1;
+for (t = id->first_cdata.first; t; t = t->next) 
+	{
+	strncat(er->cltrid, t->text, n);
+	n -= strlen(t->text);
+	if (n < 1) break;
+	}
+				    
+ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+	"EPP: found clTRID = %s.", er->cltrid);
+
+return(APR_SUCCESS);
+}
+
+
+/*
  * Take an XML tree and build a URI path from the commands found
  *
  * TODO: actually, the tree should have been validated by now, but as
@@ -107,14 +173,15 @@ return r;
 epp_translate_xml_to_uri(apr_xml_doc *doc, char *b, apr_size_t b_size, epp_rec *er)
 {
 apr_xml_elem *cred, *command, *c, *hello;
-epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(er->ur->c->base_server->module_config, &epp_module);
+epp_conn_rec *conf = er->ur->conf;
 
+/*
+ * default to a schema error
+ */
+strncpy(b, conf->xml_error_schema, b_size);
 
 if(strcmp("epp",doc->root->name))
-	{
-	strncpy(b, conf->xml_error_schema, b_size);
 	return(APR_BADARG);
-	}
 /*
  * Check for a hello frame
  */
@@ -132,10 +199,7 @@ if (hello != NULL)
 
 command = get_elem(doc->root->first_child, "command");
 if (command == NULL)
-	{
-	strncpy(b, conf->xml_error_schema, b_size);
 	return(APR_BADARG);
-	}
 
 
 c = command->first_child;
@@ -153,20 +217,46 @@ while (c != NULL)
 	c = c->next;
 	}
 
-
+/* XXX doesn't handle empty command gacefully */
 return(APR_SUCCESS);
 }
 
 
+/*
+ * Call an error handler.
+ *
+ */
+apr_status_t epp_error_handler(epp_rec *er, char *uri, char *errmsg)
+{
+request_rec *r, *rr;
+
+r = epp_create_request(er->ur);
+ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection);
+rr = ap_sub_req_method_uri("GET", uri, r, er->ur->c->output_filters);
+ap_run_sub_req(rr);
+ap_fflush(er->ur->c->output_filters, er->bb_out);
+if (rr != NULL) 
+	ap_destroy_sub_req(rr);
+
+}
+
+/*
+ * This is the core function. 
+ *
+ * We have to a full EPP frame, now build the XML object,
+ * do some rudimentary checking, build an URI, an request
+ * object and call it.
+ *
+ */
 epp_process_frame(epp_rec *er)
 {
 apr_xml_parser *xml_p;
 apr_xml_doc *doc;
 apr_status_t rv;
 char errstr[300];
-char returnframe[400];
 request_rec *r, *rr;
 int retval;
+epp_conn_rec *conf = er->ur->conf;
 
 char uri[200];
 char content_length[20];
@@ -178,17 +268,37 @@ ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
 	"XML parser feed reports: %s", errstr);
 
 rv = apr_xml_parser_done(xml_p,&doc);
+er->doc = doc;
 
 apr_xml_parser_geterror(xml_p, errstr, sizeof(errstr));
 ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
 	"XML parser done reports: %s", errstr);
 
-sprintf(returnframe,"<epp>\n  <parsermsg>%s</parsermsg>\n</epp>\n",errstr);
 
-if (rv == APR_SUCCESS)
+if (rv != APR_SUCCESS)
 	{
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
+		"not valid XML");
+	epp_error_handler(er, conf->xml_error_parse, errstr);
+	return;
+	}
+
+rv = epp_get_cltrid(er);
+if (rv != APR_SUCCESS)
+	{
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
+		"Schema error while looking for clTRID");
+	epp_error_handler(er, conf->xml_error_schema, "Schema error while looking for clTRID");
+	return;
+	}
+
+/*
+ * now do the actual work
+ */
+
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"XML: root node name = %s.", doc->root->name);
+
 
 	r = epp_create_request(er->ur);
 	
@@ -203,7 +313,8 @@ if (rv == APR_SUCCESS)
 	er->serialised_xml_size = strlen(er->serialised_xml);
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"XML: serialized xml size = %d.", er->serialised_xml_size);
-	sprintf(content_length, "%u", strlen(EPP_CONTENT_PREFIX_CGI) + strlen(EPP_CONTENT_POSTFIX_CGI)
+	sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI) + 
+				+ strlen(EPP_CONTENT_CLTRID_CGI) + strlen(EPP_CONTENT_POSTFIX_CGI)
 				+ er->serialised_xml_size);
 
 	apr_table_set(r->headers_in, "Content-Type", "multipart/form-data; boundary=--BOUNDARY--");
@@ -236,21 +347,7 @@ if (rv == APR_SUCCESS)
 	ap_fflush(er->ur->c->output_filters, er->bb_out);
 	if (rr != NULL) 
 		ap_destroy_sub_req(rr);
-	}
-else
-	{
-	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
-		"not valid XML");
-	r = epp_create_request(er->ur);
-	ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection);
-        rr = ap_sub_req_method_uri("GET", EPP_DEFAULT_XML_ERROR, r, er->ur->c->output_filters);
-	ap_run_sub_req(rr);
-	ap_fflush(er->ur->c->output_filters, er->bb_out);
-	if (rr != NULL) 
-		ap_destroy_sub_req(rr);
-	}
 }
-
 
 static int process_epp_connection(conn_rec *c)
 {
@@ -287,9 +384,10 @@ static int process_epp_connection(conn_rec *c)
     ap_add_input_filter("EPPTCP_INPUT", NULL, NULL, c);
 
     apr_pool_create(&p, c->pool);
-    ur = apr_palloc(p, sizeof(*ur));
-    ur->pool = p;
-    ur->c = c;
+    ur 		= apr_palloc(p, sizeof(*ur));
+    ur->pool 	= p;
+    ur->c 	= c;
+    ur->conf	= conf;
 
 
     /* create the brigades */
@@ -569,7 +667,8 @@ static apr_status_t epp_xmlstdin_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 
 
 /*
- * This input filter writes the xml tree from the context as CGI parameter, then EOS.
+ * This input filter writes the xml tree from the context as CGI parameter, 
+ * the clTRID, then EOS.
  *
  */
 static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
@@ -585,9 +684,13 @@ static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 
     if (er->serialised_xml_size > 0)
     	{
-	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_PREFIX_CGI, 
-				strlen(EPP_CONTENT_PREFIX_CGI), f->r->connection->bucket_alloc));
+	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_FRAME_CGI, 
+				strlen(EPP_CONTENT_FRAME_CGI), f->r->connection->bucket_alloc));
         APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->serialised_xml,er->serialised_xml_size,
+		f->r->pool,f->r->connection->bucket_alloc));
+	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_CLTRID_CGI, 
+				strlen(EPP_CONTENT_CLTRID_CGI), f->r->connection->bucket_alloc));
+        APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->cltrid,strlen(er->cltrid),
 		f->r->pool,f->r->connection->bucket_alloc));
 	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_POSTFIX_CGI, 
 				strlen(EPP_CONTENT_POSTFIX_CGI), f->r->connection->bucket_alloc));
@@ -621,7 +724,7 @@ static void *epp_create_server(apr_pool_t *p, server_rec *s)
     epp_conn_rec *conf = (epp_conn_rec *)apr_pcalloc(p, sizeof(*conf));
 
     conf->epp_on = 0;
-    conf->xml_parse_error 	= EPP_DEFAULT_XML_ERROR;
+    conf->xml_error_parse 	= EPP_DEFAULT_XML_ERROR;
     conf->xml_error_schema 	= EPP_DEFAULT_XML_ERROR_SCHEMA;
     conf->command_root 		= EPP_DEFAULT_COMMAND_ROOT;
     return conf;
@@ -643,7 +746,7 @@ static const char *set_epp_protocol(cmd_parms *cmd, void *dummy, int flag)
 }
 
 
-static const char *set_epp_xml_parse_error(cmd_parms *cmd, void *dummy, const char *arg)
+static const char *set_epp_xml_error_parse(cmd_parms *cmd, void *dummy, const char *arg)
 {
     server_rec *s = cmd->server;
     epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
@@ -652,7 +755,7 @@ static const char *set_epp_xml_parse_error(cmd_parms *cmd, void *dummy, const ch
     if (err) {
         return err;
     }
-    conf->xml_parse_error = apr_pstrdup(cmd->pool, arg);
+    conf->xml_error_parse = apr_pstrdup(cmd->pool, arg);
     return NULL;
 }
 
@@ -687,7 +790,7 @@ static const char *set_epp_command_root(cmd_parms *cmd, void *dummy, const char 
 static const command_rec epp_cmds[] = {
     AP_INIT_FLAG("EPPProtocol", set_epp_protocol, NULL, RSRC_CONF,
                  "Whether this server is serving the EPP protocol"),
-    AP_INIT_TAKE1("EPPXMLParseError",set_epp_xml_parse_error , NULL, RSRC_CONF,
+    AP_INIT_TAKE1("EPPXMLParseError",set_epp_xml_error_parse , NULL, RSRC_CONF,
 		                      "Error URI for XML parsing errors"),
     AP_INIT_TAKE1("EPPXMLNotEPP",set_epp_xml_error_schema , NULL, RSRC_CONF,
 		                      "Error URI for XML ok, but not <epp>"),

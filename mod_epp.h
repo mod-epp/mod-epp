@@ -3,8 +3,6 @@
 #define EPP_H
 
 #include "apr.h"
-#include "apr_md5.h"
-#include "apr_hash.h"
 #include "httpd.h"
 #include "util_filter.h"
 
@@ -12,10 +10,11 @@
 extern "C" {
 #endif
 
-#define MAX_INVALID_CMD 10
 #define EPP_TCP_HEADER_SIZE 4		/* just one longword */
 #define EPP_CHUNK_SIZE 2048		/* try to read that many bytes at once */
 #define EPP_MAX_FRAME_SIZE 65536	/* don't accept larger xml data blocks */
+#define TRIDSIZE 128			/* actually, it should be 3 to 64 chars,
+					   but due to unicode we'll give it more room. */
 
 module AP_MODULE_DECLARE_DATA epp_module;
 
@@ -24,7 +23,8 @@ module AP_MODULE_DECLARE_DATA epp_module;
 #define EPP_DEFAULT_COMMAND_ROOT "/epp/command"
 
 #define EPP_CONTENT_TYPE_CGI "multipart/form-data; boundary=--BOUNDARY--"
-#define EPP_CONTENT_PREFIX_CGI "----BOUNDARY--\r\nContent-Disposition: form-data; name=\"frame\"\r\n\r\n"
+#define EPP_CONTENT_FRAME_CGI "----BOUNDARY--\r\nContent-Disposition: form-data; name=\"frame\"\r\n\r\n"
+#define EPP_CONTENT_CLTRID_CGI "\r\n----BOUNDARY--\r\nContent-Disposition: form-data; name=\"clTRID\"\r\n\r\n"
 #define EPP_CONTENT_POSTFIX_CGI "\r\n----BOUNDARY--\r\n"
 
 /*
@@ -36,7 +36,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 typedef struct epp_conn_rec {
     int epp_on;				/* is epp enabled on this server */
 
-    const char *xml_parse_error;
+    const char *xml_error_parse;
     const char *xml_error_schema;
     const char *command_root;
 
@@ -44,6 +44,7 @@ typedef struct epp_conn_rec {
 
 typedef struct epp_user_rec {
     apr_pool_t *pool;
+    epp_conn_rec *conf;
 
     conn_rec *c;
 
@@ -68,6 +69,9 @@ typedef struct epp_rec {
     apr_size_t orig_xml_size;
 
     apr_xml_doc *doc;
+
+    char cltrid[TRIDSIZE];
+
 } epp_rec;
 
 
