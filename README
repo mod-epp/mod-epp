@@ -116,6 +116,8 @@ EPPCommandRoot          /epp/command
 EPPSessionRoot          /epp/session
 EPPErrorRoot            /epp/error
 EPPAuthURI              /epp/auth/login
+EPPVersion		7
+
 
 Detailed description:
 
@@ -177,6 +179,41 @@ EPPAuthURI is accessed during the EPP <login> command. You should protect
 
 	In such a setup you have to make sure that the EPP command
 	scripts are *not* callable via a normal HTTP port.
+
+EPPVersion specifies which draft version of the protocol this
+	module is supposed to follow. Valid values are the numbers
+	"6" and "7". The only difference is the handling of the
+	<login> command.
+
+	For version 6, this is a valid EPP frame (namespaces & co omitted)
+
+		<epp>
+		 <command>
+		  <creds>
+		   <clID>someregistrar</clID>
+		   <pw>somepassword</pw>
+		  </creds>
+		  <login/>
+		  <clTRID>tag-01</clTRID>
+		 </command>
+		</epp>
+
+	Version 7 (which is the current draft as of 2003/01/07) defines
+	<login> something like this:
+
+		<epp>
+		 <command>
+		  <login>
+		   <clID>someregistrar</clID>
+		   <pw>somepassword</pw>
+		  </login>
+		  <clTRID>tag-02</clTRID>
+		 </command>
+		</epp>
+
+	You can run different EPP versions on different ports on the same
+	server.
+
 
 
 SSL SUPPORT
