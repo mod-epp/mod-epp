@@ -82,6 +82,14 @@ The mod_epp module does not replace the HTTP functionality
 of Apache 2.0, the server can still be used to serve web pages
 on a different port.
 
+There has been a change in the Apache internal filter API recently;
+this module was developed for 2.0.43. Version 2.0.39 is definitely
+too old.
+
+If you turn on StdEnvVars, you might run into a core dump. Please
+have a look at http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057
+for a possible workaround.
+
 
 
 CONFIGURATION
@@ -161,6 +169,11 @@ EPPAuthURI is accessed during the EPP <login> command. You should protect
 	not to require apache authentication on the normal EPP
 	commands. By issuing a pseudo-request on login, the
 	expensive checks can be performed just once for all commands.
+
+	mod_epp will insert a REMOTE_USER header in all subsequent
+	requests from the same connection even if no apache-side
+	authentication is done for requests after the initial 
+	login procedure.
 
 	In such a setup you have to make sure that the EPP command
 	scripts are *not* callable via a normal HTTP port.

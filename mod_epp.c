@@ -382,6 +382,8 @@ if ((res = ap_process_request_internal(r)) == OK)
 		"epp_login (success): after ap_process_request_internal: res = %d", res);
 
 	er->ur->authenticated = 1;
+	apr_cpystrn(er->ur->clid, clid, sizeof(er->ur->clid));
+	apr_cpystrn(er->ur->pw, pw, sizeof(er->ur->pw));
 	apr_pool_destroy(r->pool);
 	return(APR_SUCCESS);
 	}
@@ -543,7 +545,15 @@ if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builti
 	 * Fake Basic Auth.
 	 */
 	if (er->ur->authenticated)
+		{
 		apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
+		/*
+	 	 * If the actual command or session URIs are not protected, no
+		 * REMOTE_USER CGI environment variable will be produced. Thus we 
+		 * fake it here.
+	 	 */
+		r->user            = er->ur->clid;
+		}
 
 	ap_process_request(r);
 
