@@ -16,11 +16,33 @@ extern "C" {
 #define TRIDSIZE 128			/* actually, it should be 3 to 64 chars,
 					   but due to unicode we'll give it more room. */
 
+#define CLIDSIZE 32
+/*
+ *    <simpleType name="clIDType">
+ *       <restriction base="token">
+ *          <minLength value="3"/>
+ *          <maxLength value="16"/>
+ *       </restriction>
+ *    </simpleType>
+ */ 
+#define PWSIZE 32
+/*
+ *     <simpleType name="pwType">
+ *        <restriction base="token">
+ *           <minLength value="6"/>
+ *           <maxLength value="16"/>
+ *        </restriction>
+ *     </simpleType>
+ */                                     
+
+
 module AP_MODULE_DECLARE_DATA epp_module;
 
 #define EPP_DEFAULT_XML_ERROR "/epp/error/xmlparsing"
 #define EPP_DEFAULT_XML_ERROR_SCHEMA "/epp/error/schema"
+#define EPP_DEFAULT_ERROR_PROTOCOL "/epp/error/protocol"
 #define EPP_DEFAULT_COMMAND_ROOT "/epp/command"
+#define EPP_DEFAULT_SESSION_ROOT "/epp/session"
 
 #define EPP_CONTENT_TYPE_CGI "multipart/form-data; boundary=--BOUNDARY--"
 #define EPP_CONTENT_FRAME_CGI "----BOUNDARY--\r\nContent-Disposition: form-data; name=\"frame\"\r\n\r\n"
@@ -32,13 +54,29 @@ module AP_MODULE_DECLARE_DATA epp_module;
  */
 #define EPP_BUILTIN_HELLO "<epp><hello/></epp>"
 
+/*
+ * Translate a timeout into:
+ */
+#define EPP_BUILTIN_TIMEOUT "<epp><timeout/></epp>"
+
+/*
+ * some return codes
+ */
+#define EPP_PROT_ERROR 1
+#define EPP_PROT_OK 0
+
+
+
 
 typedef struct epp_conn_rec {
     int epp_on;				/* is epp enabled on this server */
 
-    const char *xml_error_parse;
-    const char *xml_error_schema;
+    char *xml_error_parse;
+    char *xml_error_schema;
+    char *error_protocol;
     const char *command_root;
+    const char *session_root;
+    const char *authuri;
 
 } epp_conn_rec;
 
@@ -48,9 +86,12 @@ typedef struct epp_user_rec {
 
     conn_rec *c;
 
-    char *user;
-    char *passwd;
+    char clid[CLIDSIZE];
+    char pw[PWSIZE];
     char *auth_string;
+
+    int authenticated;
+    int failed_logins;
 
 } epp_user_rec;
 

@@ -8,9 +8,6 @@
 #
 
 builddir=.
-top_srcdir=/usr/local/apache2
-top_builddir=/usr/local/apache2
-include /usr/local/apache2/build/special.mk
 
 version=0.0.3
 

@@ -54,6 +54,26 @@ return get_elem(elem->next, name);
 }
 
 
+/*
+ * actually, this is probably overkill, we parsed the XML in
+ * one swoop and thus don't expect fragmented cdata.
+ */
+void xml_firstcdata_strncat(char *dest, size_t dstsize, apr_xml_elem *elem)
+{
+apr_text *t;
+
+dstsize--;
+dest[0] = 0;
+
+for (t = elem->first_cdata.first; t; t = t->next) 
+	{
+	strncat(dest, t->text, dstsize);
+	dstsize -= strlen(t->text);
+	if (dstsize < 1) break;
+	}
+}
+
+
 static request_rec *epp_create_request(epp_user_rec *ur)
 {
 apr_pool_t *p;
@@ -142,18 +162,8 @@ if (id == NULL)
 	return(APR_SUCCESS);
 	}
 
-/*
- * actually, this is probably overkill, we just get < 64 chars
- * in one text entry as we xml-parse in one go.
- */
 
-n = sizeof(er->cltrid) - 1;
-for (t = id->first_cdata.first; t; t = t->next) 
-	{
-	strncat(er->cltrid, t->text, n);
-	n -= strlen(t->text);
-	if (n < 1) break;
-	}
+xml_firstcdata_strncat(er->cltrid, sizeof(er->cltrid), id);
 
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 	"EPP: found clTRID = %s.", er->cltrid);
@@ -168,11 +178,20 @@ return(APR_SUCCESS);
  * TODO: actually, the tree should have been validated by now, but as
  * we don't do XML schema checks right now, we go for *really* simple checks.
  *
+ * This function returns 
+ * 	APR_SUCCESS	just call it
+ * 	APR_BADARG	schema error
+ * 	
+ *
+ * If the command is a session handling one, 
+ * 	a) use EPPSessionRoot instead of EPPCommandRoot to build URI
+ * 	b) return the XML element in builtin
+ *
  */
 
-epp_translate_xml_to_uri(apr_xml_doc *doc, char *b, apr_size_t b_size, epp_rec *er)
+epp_translate_xml_to_uri(apr_xml_doc *doc, char *b, apr_size_t b_size, epp_rec *er, apr_xml_elem **builtin)
 {
-apr_xml_elem *cred, *command, *c, *hello;
+apr_xml_elem *cred, *command, *c, *hello, *timeout;
 epp_conn_rec *conf = er->ur->conf;
 
 /*
@@ -182,19 +201,31 @@ strncpy(b, conf->xml_error_schema, b_size);
 
 if(strcmp("epp",doc->root->name))
 	return(APR_BADARG);
+
 /*
  * Check for a hello frame
  */
-
 hello = get_elem(doc->root->first_child, "hello");
 if (hello != NULL)
 	{
-	apr_snprintf(b, b_size, "%s/hello", conf->command_root);
+	apr_snprintf(b, b_size, "%s/hello", conf->session_root);
 	return(APR_SUCCESS);
 	}
 
 /*
- * Not hello? Then it must be a <command>
+ * Check for a timeout frame		THIS IS NOT REALLY EPP. 
+ * 					Just a fake request on a timeout.
+ */
+timeout = get_elem(doc->root->first_child, "timeout");
+if (timeout != NULL)
+	{
+	apr_snprintf(b, b_size, "%s/timeout", conf->session_root);
+	return(APR_SUCCESS);
+	}
+
+
+/*
+ * Not hello/timeout? Then it must be a <command>
  */
 
 command = get_elem(doc->root->first_child, "command");
@@ -214,11 +245,17 @@ while (c != NULL)
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"XML: found command = %s.", c->name);
 	apr_snprintf(b, b_size, "%s/%s", conf->command_root, c->name);
-	c = c->next;
+
+	if ((!strcmp("login",c->name) || !strcmp("logout",c->name)) && builtin)
+		{
+		*builtin = c;
+		apr_snprintf(b, b_size, "%s/%s", conf->session_root, c->name);
+		}
+
+	return(APR_SUCCESS);
 	}
 
-/* XXX doesn't handle empty command gacefully */
-return(APR_SUCCESS);
+return(APR_BADARG);
 }
 
 
@@ -240,6 +277,78 @@ if (rr != NULL)
 
 }
 
+
+apr_status_t epp_login(epp_rec *er, apr_xml_elem *login)
+{
+apr_xml_elem *clid_el, *pw_el;
+
+char clid[CLIDSIZE];
+char pw[PWSIZE];
+char *passwd;
+request_rec *r, *rr;
+int retval;
+
+ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
+	"epp_login: entering");
+
+if (er->ur->authenticated)
+	return EPP_PROT_ERROR;
+
+clid_el = get_elem(login->first_child, "clID");
+pw_el = get_elem(login->first_child, "pw");
+
+if ((clid_el == NULL) || (pw_el == NULL))
+	{
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
+		"epp_login: clid or pw missing");
+	
+	epp_error_handler(er, er->ur->conf->xml_error_schema, "Error in login.");
+	return(EPP_PROT_ERROR);
+	}
+
+xml_firstcdata_strncat(clid, sizeof(clid), clid_el);
+xml_firstcdata_strncat(pw, sizeof(pw), pw_el);
+
+ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
+	"epp_login: clid = %s, pw = %s", clid, pw);
+
+passwd = apr_psprintf(er->pool, "%s:%s", clid, pw);
+er->ur->auth_string = apr_psprintf(er->ur->pool, "Basic %s", ap_pbase64encode(er->ur->pool, passwd));
+
+r = epp_create_request(er->ur);
+apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
+
+rr = ap_sub_req_method_uri("GET", er->ur->conf->authuri, r, er->ur->c->output_filters);
+ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
+	"epp_login: after req_meth: status = %d", rr->status);
+
+if (rr->status == HTTP_OK)
+	{
+	er->ur->authenticated = 1;
+	if (rr != NULL) 
+		ap_destroy_sub_req(rr);
+	return(APR_SUCCESS);
+	}
+else
+	{
+	if (rr != NULL) 
+		ap_destroy_sub_req(rr);
+	er->ur->authenticated = 0;
+	}
+	
+return(APR_SUCCESS);
+}
+
+/* 
+ * more or less a dummy for now
+ */
+apr_status_t epp_logout(epp_rec *er, apr_xml_elem *login)
+{
+er->ur->authenticated = 0;
+return(APR_SUCCESS);
+}
+
+
 /*
  * This is the core function. 
  *
@@ -252,6 +361,7 @@ epp_process_frame(epp_rec *er)
 {
 apr_xml_parser *xml_p;
 apr_xml_doc *doc;
+apr_xml_elem *builtin = NULL;
 apr_status_t rv;
 char errstr[300];
 request_rec *r, *rr;
@@ -292,6 +402,28 @@ if (rv != APR_SUCCESS)
 	return;
 	}
 
+epp_translate_xml_to_uri(doc, uri, sizeof(uri), er, &builtin);
+ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+	"Translated EPP to %s", uri);
+
+rv = APR_SUCCESS;
+if (builtin && !strcmp("login",builtin->name))
+{
+	rv = epp_login(er, builtin);
+}
+
+if (builtin && !strcmp("logout",builtin->name))
+{
+	rv = epp_logout(er, builtin);
+}
+
+if (rv != APR_SUCCESS)	/* something went wrong with the builtins */
+{
+	epp_error_handler(er, conf->error_protocol, "Protocol error.");
+	return;
+}
+
+
 /*
  * now do the actual work
  */
@@ -324,7 +456,9 @@ if (rv != APR_SUCCESS)
 
 	ap_add_input_filter("XMLCGI_INPUT", (void *) er, r, r->connection);
 
-	epp_translate_xml_to_uri(doc, uri, sizeof(uri), er);
+
+
+
         rr = ap_sub_req_method_uri("POST", uri, r, er->ur->c->output_filters);
 	rr->the_request = uri;
 	retval = ap_run_sub_req(rr);
@@ -389,6 +523,8 @@ static int process_epp_connection(conn_rec *c)
     ur 		= apr_palloc(p, sizeof(*ur));
     ur->pool 	= p;
     ur->c 	= c;
+    ur->authenticated 	= 0;
+    ur->failed_logins 	= 0;
     ur->conf	= conf;
 
 
@@ -426,6 +562,11 @@ static int process_epp_connection(conn_rec *c)
 			ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
 				"Error reading EPP header. Aborting connection.");
 			apr_brigade_destroy(bb_tmp);
+
+			er->orig_xml = EPP_BUILTIN_TIMEOUT;
+			er->orig_xml_size = strlen(EPP_BUILTIN_TIMEOUT);
+			epp_process_frame(er);
+
     			APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 			ap_pass_brigade(c->output_filters, bb_out);
 			goto close_connection;
@@ -728,7 +869,9 @@ static void *epp_create_server(apr_pool_t *p, server_rec *s)
     conf->epp_on = 0;
     conf->xml_error_parse 	= EPP_DEFAULT_XML_ERROR;
     conf->xml_error_schema 	= EPP_DEFAULT_XML_ERROR_SCHEMA;
+    conf->error_protocol 	= EPP_DEFAULT_ERROR_PROTOCOL;
     conf->command_root 		= EPP_DEFAULT_COMMAND_ROOT;
+    conf->session_root 		= EPP_DEFAULT_SESSION_ROOT;
     return conf;
 }
 
@@ -774,6 +917,20 @@ static const char *set_epp_xml_error_schema(cmd_parms *cmd, void *dummy, const c
     return NULL;
 }
 
+
+static const char *set_epp_error_protocol(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    server_rec *s = cmd->server;
+    epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
+                                                              &epp_module);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
+    if (err) {
+        return err;
+    }
+    conf->error_protocol = apr_pstrdup(cmd->pool, arg);
+    return NULL;
+}
+
 static const char *set_epp_command_root(cmd_parms *cmd, void *dummy, const char *arg)
 {
     server_rec *s = cmd->server;
@@ -788,16 +945,51 @@ static const char *set_epp_command_root(cmd_parms *cmd, void *dummy, const char 
 }
 
 
+static const char *set_epp_session_root(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    server_rec *s = cmd->server;
+    epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
+                                                              &epp_module);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
+    if (err) {
+        return err;
+    }
+    conf->session_root = apr_pstrdup(cmd->pool, arg);
+    return NULL;
+}
+
+
+
+static const char *set_epp_authuri(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    server_rec *s = cmd->server;
+    epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
+                                                              &epp_module);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
+    if (err) {
+        return err;
+    }
+    conf->authuri = apr_pstrdup(cmd->pool, arg);
+    return NULL;
+}
+
+
 
 static const command_rec epp_cmds[] = {
     AP_INIT_FLAG("EPPProtocol", set_epp_protocol, NULL, RSRC_CONF,
                  "Whether this server is serving the EPP protocol"),
     AP_INIT_TAKE1("EPPXMLParseError",set_epp_xml_error_parse , NULL, RSRC_CONF,
-		                      "Error URI for XML parsing errors"),
-    AP_INIT_TAKE1("EPPXMLNotEPP",set_epp_xml_error_schema , NULL, RSRC_CONF,
-		                      "Error URI for XML ok, but not <epp>"),
+		                      "Error URI for XML parsing errors."),
+    AP_INIT_TAKE1("EPPXMLSchemaError",set_epp_xml_error_schema , NULL, RSRC_CONF,
+		                      "Error URI for XML schema violations "),
+    AP_INIT_TAKE1("EPPProtocolError",set_epp_error_protocol , NULL, RSRC_CONF,
+		                      "Error URI for EPP protocol violations "),
     AP_INIT_TAKE1("EPPCommandRoot",set_epp_command_root , NULL, RSRC_CONF,
-		                      "Baseline URI for EPP command translation"),
+		                      "Baseline URI for EPP command translation."),
+    AP_INIT_TAKE1("EPPSessionRoot",set_epp_session_root , NULL, RSRC_CONF,
+		                      "Baseline URI for EPP session handling requests."),
+    AP_INIT_TAKE1("EPPAuthURI",set_epp_authuri , NULL, RSRC_CONF,
+		                      "URI for authentication requests."),
     { NULL }
 };
 

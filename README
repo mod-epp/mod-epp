@@ -3,6 +3,7 @@
                                 =======
 
 OVERVIEW
+--------
 
 This module implements the EPP over TCP protocol as defined
 in draft-ietf-provreg-epp-07.txt and draft-ietf-provreg-epp-tcp-05.txt
@@ -23,6 +24,7 @@ on the XML structure insofar as needed to
 
 
 RATIONALE
+---------
 
 EPP is an XML-based protocol, but it does not utilize one of the common
 XML based transaction protocols like SOAP, XML-RPC or HTTP. Writing
@@ -41,6 +43,7 @@ included in the Apache framework.
 
 
 IMPLEMENTATION
+--------------
 
 mod_epp implements an Apache 2.0 "input filter" which reads
 EPP frames (as encapsulated according to the EPP/TCP spec),
@@ -59,6 +62,7 @@ in an EPP/TCP frame.
 
 
 INSTALLATION
+------------
 
 Unpack the distribution and run:
 
@@ -80,8 +84,8 @@ on a different port.
 
 
 
-
 CONFIGURATION
+-------------
 
 All configuration is done inside the mail Apache config
 file "httpd.conf". First of all, we need to tell Apache to listen
@@ -101,25 +105,63 @@ Inside the <VirtualHost> context you can specify further
 parameters concerning mod_epp (listed here with the defaults):
 
 EPPXMLParseError        /epp/error/xmlparsing
-EPPXMLNotEPP            /epp/error/schema
+EPPXMLSchemaError       /epp/error/schema
+EPPProtocolError        /epp/error/protocol
 EPPCommandRoot          /epp/command
+EPPSessionRoot          /epp/session
+EPPAuthURI              /epp/auth/login
 
 Detailed description:
 
 EPPXMLParseError specifies which path (url space!) to call when the XML
 	parsing failed for the received EPP message.
 
-EPPXMLNotEPP specifies what to call when mod_epp cannot make sense of
+EPPXMLSchemaError specifies what to call when mod_epp cannot make sense of
 	the XML tree.
+
+EPPProtocolError specifies the error uri to use when an EPP protocol
+	violation is detected. This concerns primarily EPP state-machine
+	and authentication problems.
 
 EPPCommandRoot defines how mod_epp will build the path to the script
 	handling any command. If the EPP message contained e.g.
 	<epp> <command> <foobar/> </command> </epp>
 	then it will use "$EPPCommandRoot/foobar".
 
+EPPSessionRoot defines how mod_epp will build the path to the script
+	handling any session handling events. This includes
+	"hello", "login", "logout" and "timeout".
+
+EPPAuthURI is accessed during the EPP <login> command. You should protect
+	that URI with whatever access control mechanism you want
+	to apply to the whole setup.
+
+	All further requests in this EPP session will inherit this
+	authentication information. 
+
+	Example config (within the EPP VirtualHost):
+
+	<Location /epp/auth>
+		AuthType Basic
+		AuthName "EPP"
+		AuthUserFile <some-path>/htpasswd
+		require valid-user
+	</Location>
+
+
+
+SCRIPTS
+-------
+
+The directory htdocs-sample contains some examples of _static_
+responses to common EPP queries. They are *not* useful for any
+real purposes. A sample implementation of a real EPP server
+is outside the scope of mod_epp; please see 
+http://sourceforge.net/projects/aepps/ for such scripts.
 
 
 AUTHOR
+------
 
 This module is currently developed by Otmar Lendl under contract
 from NIC.at. You can reach the author at lendl@nic.at.
@@ -127,6 +169,7 @@ from NIC.at. You can reach the author at lendl@nic.at.
 
 
 LICENCE
+-------
 
 We intend to release this module under the Apache licence.  The
 formalities have not been worked out yet, so please consider this to be
