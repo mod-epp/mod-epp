@@ -1,0 +1,121 @@
+<epp><command>
+	<login>
+		<clID>test</clID>
+		<pw>test</pw>
+	</login>
+	<clTRID>sample1trid</clTRID>
+</command></epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <check>
+      <obj:check xmlns:obj="urn:ietf:params:xml:ns:obj"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+        <obj:name>example1</obj:name>
+        <obj:name>example2</obj:name>
+        <obj:name>example3</obj:name>
+      </obj:check>
+    </check>
+    <clTRID>ABC-12346</clTRID>
+  </command>
+</epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <info>
+      <obj:info xmlns:obj="urn:ietf:params:xml:ns:obj"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+        <!-- Object-specific elements. -->
+      </obj:info>
+    </info>
+    <clTRID>ABC-12346</clTRID>
+  </command>
+</epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <poll op="req"/>
+    <clTRID>ABC-12345</clTRID>
+  </command>
+</epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <transfer op="query">
+      <obj:transfer xmlns:obj="urn:ietf:params:xml:ns:obj"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+        <!-- Object-specific elements. -->
+      </obj:transfer>
+    </transfer>
+    <clTRID>ABC-12346</clTRID>
+  </command>
+</epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <create>
+      <obj:create xmlns:obj="urn:ietf:params:xml:ns:obj"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+        <!-- Object-specific elements. -->
+      </obj:create>
+    </create>
+    <clTRID>ABC-12345</clTRID>
+  </command>
+</epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <delete>
+      <obj:delete xmlns:obj="urn:ietf:params:xml:ns:obj"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+        <!-- Object-specific elements. -->
+      </obj:delete>
+    </delete>
+    <clTRID>ABC-12346</clTRID>
+  </command>
+</epp>
+
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:ietf:params:xml:ns:epp-1.0
+     epp-1.0.xsd">
+  <command>
+    <renew>
+      <obj:renew xmlns:obj="urn:ietf:params:xml:ns:obj"
+       xsi:schemaLocation="urn:ietf:params:xml:ns:obj obj.xsd">
+        <!-- Object-specific elements. -->
+      </obj:renew>
+    </renew>
+    <clTRID>ABC-12346</clTRID>
+  </command>
+</epp>
+
+<epp><command>
+	<logout/>
+</command></epp>
+

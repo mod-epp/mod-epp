@@ -326,16 +326,6 @@ while (c != NULL)
 		continue;
 		}
 
-	/*
-	 * EPP version 6 can include credentials in <creds> under <command>.
-	 * We have to skip those when trying to find the right command name.
-	 */
-	if ((conf->epp_version == 6) && !strcasecmp(c->name, "creds")) 
-		{
-		c = c->next;
-		continue;
-		}
-
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"XML: found command = %s.", c->name);
 
@@ -452,26 +442,6 @@ if (er->ur->authenticated)
 	{
 	epp_error_handler(er, "login", 2002, er->cltrid, "Already logged in. Use <logout> first.");
 	return EPP_PROT_ERROR;
-	}
-/*
- * In version 6, <clID> and <pw> do not appear within <login>,
- * but in a silbling to <login> called <creds>.
- */
-if (er->ur->conf->epp_version == 6)
-	{
-	apr_xml_elem *creds;
-
-	creds = get_elem(login->parent->first_child, "creds");
-	if (creds == NULL)
-		{
-		ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
-			"epp_login: creds missing");
-		
-		epp_error_handler(er, "schema", 2001, NULL, 
-				"Error in login (for version 6 <creds> must be present).");
-		return(EPP_PROT_ERROR);
-		}
-	login = creds;
 	}
 		
 clid_el = get_elem(login->first_child, "clID");
@@ -1143,7 +1113,6 @@ static void *epp_create_server(apr_pool_t *p, server_rec *s)
     epp_conn_rec *conf = (epp_conn_rec *)apr_pcalloc(p, sizeof(*conf));
 
     conf->epp_on 		= 0;
-    conf->epp_version 		= EPP_DEFAULT_VERSION;
     conf->command_root 		= EPP_DEFAULT_COMMAND_ROOT;
     conf->session_root 		= EPP_DEFAULT_SESSION_ROOT;
     conf->error_root 		= EPP_DEFAULT_ERROR_ROOT;
@@ -1223,33 +1192,6 @@ static const char *set_epp_authuri(cmd_parms *cmd, void *dummy, const char *arg)
 }
 
 
-static const char *set_epp_version(cmd_parms *cmd, void *dummy, const char *arg)
-{
-    server_rec *s = cmd->server;
-    epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
-                                                              &epp_module);
-    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
-    if (err) {
-        return err;
-    }
-
-    if (arg[1] != 0)
-	    return("EPP Version must be a single digit");
-
-    if (arg[0] == '6')
-	    conf->epp_version = 6;
-    else if (arg[0] == '7')
-	    conf->epp_version = 7;
-    else if (arg[0] == '8')
-	    conf->epp_version = 8;
-    else
-	    return("EPP Version must 6, 7, or 8.");
-
-    return NULL;
-}
-
-
-
 static const command_rec epp_cmds[] = {
     AP_INIT_FLAG("EPPEngine", set_epp_protocol, NULL, RSRC_CONF,
                  "Whether this server is using EPP"),
@@ -1261,8 +1203,6 @@ static const command_rec epp_cmds[] = {
 		                      "Baseline URI for EPP error handling."),
     AP_INIT_TAKE1("EPPAuthURI",set_epp_authuri , NULL, RSRC_CONF,
 		                      "URI for authentication requests."),
-    AP_INIT_TAKE1("EPPVersion",set_epp_version , NULL, RSRC_CONF,
-		                      "EPP RFC draft version."),
     { NULL }
 };
 

@@ -6,13 +6,22 @@
 	<clTRID>sample1trid</clTRID>
 </command></epp>
 
+<This> no is </xml>
+
+This neither
+
+<valid> xml, but not epp. </valid>
+
+<epp>looks a bit like epp, but isn't </epp>
+
+
 <epp><command>
 	<logout/>
 </command></epp>
 
 <epp><command>
 	<login>
-		<clID>xxxx</clID>
+		<clID>invalid user</clID>
 		<pw>yyyy</pw>
 	</login>
 	<clTRID>sample2trid</clTRID>

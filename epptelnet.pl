@@ -55,9 +55,6 @@ Remarks:
 
 	This is a simple half-duplex implementation.
 
-	I have not yet managed to send a client cert to my server.
-
-
 /ol/2k2/12/04/
 EOM
 

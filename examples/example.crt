@@ -1,22 +1,26 @@
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 2 (0x2)
+        Serial Number: 3 (0x3)
         Signature Algorithm: md5WithRSAEncryption
-        Issuer: C=AT, L=Vienna, O=NIC.at, CN=Otmar Lendl/Email=lendl@nic.at
+        Issuer: C=AT, L=Vienna, O=BOFH Certs., CN=CERTS.bofh.priv.at/Email=certs@bofh.priv.at
         Validity
-            Not Before: Dec  4 14:27:25 2002 GMT
-            Not After : Dec  4 14:27:25 2003 GMT
-        Subject: CN=Key for epptelnet.pl
+            Not Before: Apr  1 12:34:11 2004 GMT
+            Not After : Apr  1 12:34:11 2005 GMT
+        Subject: C=AT, ST=-, L=-, O=A mod_epp tester, OU=-, CN=epptelnet.pl
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
-            RSA Public Key: (512 bit)
-                Modulus (512 bit):
-                    00:e8:a4:6c:7f:e7:51:35:c2:7f:59:5c:33:15:d1:
-                    32:78:8b:0b:be:00:24:12:11:57:1c:e2:b3:c0:41:
-                    86:59:21:ad:71:41:46:43:b5:c4:94:65:f1:b1:38:
-                    71:07:5d:1d:f1:fa:9e:8d:ec:36:f7:ff:6b:3e:af:
-                    73:cf:54:e3:a9
+            RSA Public Key: (1024 bit)
+                Modulus (1024 bit):
+                    00:d4:46:ca:ed:00:13:08:50:1b:08:45:a9:76:d6:
+                    42:ab:ca:37:7b:e9:6c:35:bc:2f:52:07:a0:8d:5c:
+                    f3:ae:b4:4f:ca:45:6c:ef:72:c5:72:d9:d8:79:30:
+                    fa:03:1a:41:1a:27:e7:f1:8f:fe:85:34:fe:49:b4:
+                    11:58:30:33:09:ac:b8:fd:6c:36:aa:47:c6:3c:28:
+                    14:4c:c8:1a:ac:10:06:83:4c:f7:ea:f3:cc:82:ca:
+                    35:0c:6b:b4:c0:aa:c0:3a:82:c0:63:9e:d6:d0:37:
+                    f9:d3:da:60:07:ca:ce:4b:71:a6:0f:40:63:4b:60:
+                    65:65:fe:a8:ca:8d:df:3f:db
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
             X509v3 Basic Constraints: 
@@ -24,35 +28,38 @@ Certificate:
             Netscape Comment: 
                 OpenSSL Generated Certificate
             X509v3 Subject Key Identifier: 
-                A8:53:E6:27:BF:C4:D7:C6:2B:9E:B5:56:E8:6E:40:3D:80:B0:40:BD
+                E1:45:8D:91:21:C2:AF:BA:33:7A:7E:CB:36:1B:68:55:95:D6:BF:4D
             X509v3 Authority Key Identifier: 
-                keyid:AB:5B:05:47:9F:14:A9:0E:75:3B:65:7D:30:22:4B:2E:15:A2:BA:71
-                DirName:/C=AT/L=Vienna/O=NIC.at/CN=Otmar Lendl/Email=lendl@nic.at
+                keyid:BD:F3:DA:76:99:B4:1E:19:99:C7:68:80:56:E9:90:4F:08:27:1B:67
+                DirName:/C=AT/L=Vienna/O=BOFH Certs./CN=CERTS.bofh.priv.at/Email=certs@bofh.priv.at
                 serial:00
 
     Signature Algorithm: md5WithRSAEncryption
-        02:f1:0d:b7:7e:44:cd:91:e6:61:4b:32:48:dc:eb:f8:40:91:
-        2e:0b:0b:b8:d3:fe:c4:d9:9e:e4:9b:b1:16:93:c4:73:f8:ea:
-        69:53:da:0b:e4:ad:e3:97:96:fd:1e:7e:ea:ae:fb:a6:48:ee:
-        58:eb:15:b0:d1:57:fe:b4:98:fa:87:ab:a6:57:c2:ff:9d:b5:
-        65:69:4b:09:de:b5:79:5e:a2:22:ea:b8:23:84:44:4b:56:c1:
-        78:e8:6c:38:5e:2d:7c:7d:ae:83:95:ba:4a:3d:58:d6:f6:7c:
-        a2:0b:ac:74:5c:28:41:fe:a8:c3:74:47:d3:cc:bd:f0:02:c8:
-        ea:90
+        68:7e:c7:2a:ad:17:d5:1a:83:16:50:70:7e:71:f6:cc:c3:e5:
+        5e:44:9d:70:78:4b:1a:98:87:12:69:0e:8e:00:64:b7:e3:38:
+        dd:34:e2:87:67:c1:02:65:96:2b:cf:da:32:18:da:48:a0:eb:
+        4f:90:27:4c:27:c6:ea:78:54:47:51:0d:3b:f7:ef:93:5c:e3:
+        77:34:3d:7f:65:f8:38:80:dd:b7:9c:3c:91:7c:bc:93:48:1e:
+        b2:7b:cb:d5:c0:ef:98:3e:01:01:be:10:9c:68:3e:cf:f2:c2:
+        b2:e7:92:66:5a:b5:3d:00:87:d2:c7:5f:ee:72:10:f3:03:5f:
+        c9:09
 -----BEGIN CERTIFICATE-----
-MIICnjCCAgegAwIBAgIBAjANBgkqhkiG9w0BAQQFADBiMQswCQYDVQQGEwJBVDEP
-MA0GA1UEBxMGVmllbm5hMQ8wDQYDVQQKEwZOSUMuYXQxFDASBgNVBAMTC090bWFy
-IExlbmRsMRswGQYJKoZIhvcNAQkBFgxsZW5kbEBuaWMuYXQwHhcNMDIxMjA0MTQy
-NzI1WhcNMDMxMjA0MTQyNzI1WjAfMR0wGwYDVQQDExRLZXkgZm9yIGVwcHRlbG5l
-dC5wbDBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQDopGx/51E1wn9ZXDMV0TJ4iwu+
-ACQSEVcc4rPAQYZZIa1xQUZDtcSUZfGxOHEHXR3x+p6N7Db3/2s+r3PPVOOpAgMB
-AAGjgeowgecwCQYDVR0TBAIwADAsBglghkgBhvhCAQ0EHxYdT3BlblNTTCBHZW5l
-cmF0ZWQgQ2VydGlmaWNhdGUwHQYDVR0OBBYEFKhT5ie/xNfGK561VuhuQD2AsEC9
-MIGMBgNVHSMEgYQwgYGAFKtbBUefFKkOdTtlfTAiSy4VorpxoWakZDBiMQswCQYD
-VQQGEwJBVDEPMA0GA1UEBxMGVmllbm5hMQ8wDQYDVQQKEwZOSUMuYXQxFDASBgNV
-BAMTC090bWFyIExlbmRsMRswGQYJKoZIhvcNAQkBFgxsZW5kbEBuaWMuYXSCAQAw
-DQYJKoZIhvcNAQEEBQADgYEAAvENt35EzZHmYUsySNzr+ECRLgsLuNP+xNme5Jux
-FpPEc/jqaVPaC+St45eW/R5+6q77pkjuWOsVsNFX/rSY+oerplfC/521ZWlLCd61
-eV6iIuq4I4RES1bBeOhsOF4tfH2ug5W6Sj1Y1vZ8ogusdFwoQf6ow3RH08y98ALI
-6pA=
+MIIDSjCCArOgAwIBAgIBAzANBgkqhkiG9w0BAQQFADB0MQswCQYDVQQGEwJBVDEP
+MA0GA1UEBxMGVmllbm5hMRQwEgYDVQQKEwtCT0ZIIENlcnRzLjEbMBkGA1UEAxMS
+Q0VSVFMuYm9maC5wcml2LmF0MSEwHwYJKoZIhvcNAQkBFhJjZXJ0c0Bib2ZoLnBy
+aXYuYXQwHhcNMDQwNDAxMTIzNDExWhcNMDUwNDAxMTIzNDExWjBjMQswCQYDVQQG
+EwJBVDEKMAgGA1UECBMBLTEKMAgGA1UEBxMBLTEZMBcGA1UEChQQQSBtb2RfZXBw
+IHRlc3RlcjEKMAgGA1UECxMBLTEVMBMGA1UEAxMMZXBwdGVsbmV0LnBsMIGfMA0G
+CSqGSIb3DQEBAQUAA4GNADCBiQKBgQDURsrtABMIUBsIRal21kKryjd76Ww1vC9S
+B6CNXPOutE/KRWzvcsVy2dh5MPoDGkEaJ+fxj/6FNP5JtBFYMDMJrLj9bDaqR8Y8
+KBRMyBqsEAaDTPfq88yCyjUMa7TAqsA6gsBjntbQN/nT2mAHys5LcaYPQGNLYGVl
+/qjKjd8/2wIDAQABo4H8MIH5MAkGA1UdEwQCMAAwLAYJYIZIAYb4QgENBB8WHU9w
+ZW5TU0wgR2VuZXJhdGVkIENlcnRpZmljYXRlMB0GA1UdDgQWBBThRY2RIcKvujN6
+fss2G2hVlda/TTCBngYDVR0jBIGWMIGTgBS989p2mbQeGZnHaIBW6ZBPCCcbZ6F4
+pHYwdDELMAkGA1UEBhMCQVQxDzANBgNVBAcTBlZpZW5uYTEUMBIGA1UEChMLQk9G
+SCBDZXJ0cy4xGzAZBgNVBAMTEkNFUlRTLmJvZmgucHJpdi5hdDEhMB8GCSqGSIb3
+DQEJARYSY2VydHNAYm9maC5wcml2LmF0ggEAMA0GCSqGSIb3DQEBBAUAA4GBAGh+
+xyqtF9UagxZQcH5x9szD5V5EnXB4SxqYhxJpDo4AZLfjON004odnwQJllivP2jIY
+2kig60+QJ0wnxup4VEdRDTv375Nc43c0PX9l+DiA3becPJF8vJNIHrJ7y9XA75g+
+AQG+EJxoPs/ywrLnkmZatT0Ah9LHX+5yEPMDX8kJ
 -----END CERTIFICATE-----

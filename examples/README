@@ -1,23 +1,22 @@
 
-In this directory you find a basic set of files 
-which demonstrate the configuration of mod_epp
-and the give examples for the neccessary scripting
-environment.
+In this directory you find a basic set of files which demonstrate the
+configuration of mod_epp and the give examples for the neccessary
+scripting environment.
 
-httpd.conf is an Apache config file snippet
-containing all directives relating to mod_epp.
-I installed the server under /home/lendl/apache2, please
-adapt the paths to your setup.
+httpd.conf is an Apache config file snippet containing all directives
+relating to mod_epp. I installed the server under /home/lendl/apache2,
+please adapt the paths to your setup.
 
-You need to copy the files from examples/cgis
-to $apacheroot/cgi-bin/epp, and copy the files from
-examples/static to $apacheroot/htdocs/epp
-in order to get a working setup.
+You need to copy the files from examples/cgis to
+$apacheroot/cgi-bin/epp, and copy the files from examples/static to
+$apacheroot/htdocs/epp in order to get a working setup.
 
-example.key and example.crt can be used in conjunction 
-with epptelnet.pl to test SSL with client certs.
+example.key and example.crt can be used in conjunction with epptelnet.pl
+to test SSL with client certs. example.cacert is the CA public key which
+you have to reference in the SSLCACertificateFile directive if you want
+to enable client CERT checks in Apache.
 
 The *.xml files are just some basic EPP example
 I use for testing the server.
 
-/ol/2k3/01/10/
+/ol/2k4/04/01/
