@@ -1,0 +1,20 @@
+<epp><command>
+	<login>
+		<clID>test</clID>
+		<pw>test</pw>
+	</login>
+	<clTRID>sample1trid</clTRID>
+</command></epp>
+
+<epp><command>
+	<logout/>
+</command></epp>
+
+<epp><command>
+	<login>
+		<clID>xxxx</clID>
+		<pw>yyyy</pw>
+	</login>
+	<clTRID>sample2trid</clTRID>
+</command></epp>
+
