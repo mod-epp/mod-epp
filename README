@@ -109,7 +109,7 @@ Listen  3121
 To activate mod_epp for this port we use:
 
 <VirtualHost *:3121>
-EPPProtocol On
+EPPEngine On
 </VirtualHost>
 
 Inside the <VirtualHost> context you can specify further 
@@ -242,7 +242,7 @@ something like this:
 
 	CustomLog logs/epp_ssl_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
 
-	EPPProtocol On
+	EPPEngine On
 
 	[and other EPP directives; see above.]
 
@@ -352,7 +352,7 @@ to a different server:
 
 	Listen  3121
 	<VirtualHost *:3121>
-	EPPProtocol On
+	EPPEngine On
 
 	EPPCommandRoot          /proxy/command
 	EPPSessionRoot          /proxy/session

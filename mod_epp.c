@@ -1229,8 +1229,8 @@ static const char *set_epp_version(cmd_parms *cmd, void *dummy, const char *arg)
 
 
 static const command_rec epp_cmds[] = {
-    AP_INIT_FLAG("EPPProtocol", set_epp_protocol, NULL, RSRC_CONF,
-                 "Whether this server is serving the EPP protocol"),
+    AP_INIT_FLAG("EPPEngine", set_epp_protocol, NULL, RSRC_CONF,
+                 "Whether this server is using EPP"),
     AP_INIT_TAKE1("EPPCommandRoot",set_epp_command_root , NULL, RSRC_CONF,
 		                      "Baseline URI for EPP command translation."),
     AP_INIT_TAKE1("EPPSessionRoot",set_epp_session_root , NULL, RSRC_CONF,

@@ -109,4 +109,5 @@ somewhat organised and focused.
 	i.e. allow for global defs and merge in Vhost specific changes.
 * generate a session identifier and pass it as Cookie to the scripts..
 * check error handling on incomplete installs.
-
+* check authentication passing when running mod_epp as reverse proxy.
+* check if Connection: close works through mod_proxy
