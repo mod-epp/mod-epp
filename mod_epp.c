@@ -198,7 +198,7 @@ return(APR_SUCCESS);
 apr_status_t epp_translate_xml_to_uri(apr_xml_doc *doc, epp_rec *er, 
 		char *path, apr_size_t path_size, apr_xml_elem **element, int *login_needed)
 {
-apr_xml_elem *cred, *command, *c, *hello, *bye;
+apr_xml_elem *cred, *command, *c, *hello;
 epp_conn_rec *conf = er->ur->conf;
 
 /*
@@ -222,22 +222,9 @@ if (hello != NULL)
 	return(APR_SUCCESS);
 	}
 
-/*
- * Check for a bye frame	THIS IS NOT REALLY EPP. 
- * 				Just a fake request on a timeout or connection error.
- */
-bye = get_elem(doc->root->first_child, "bye");
-if (bye != NULL)
-	{
-	apr_snprintf(path, path_size, "%s/bye", conf->session_root);
-	if (element)
-		*element = bye;
-	return(APR_SUCCESS);
-	}
-
 
 /*
- * Not hello/bye? Then it must be a <command>
+ * Not hello? Then it must be a <command>
  */
 
 command = get_elem(doc->root->first_child, "command");
@@ -698,6 +685,7 @@ apr_pool_destroy(r->pool);
 return(APR_SUCCESS);
 }
 
+
 /*
  * Try to implement an aequivalent to the read() system call. 
  * 
@@ -843,6 +831,7 @@ static int epp_process_connection(conn_rec *c)
 		{
 		ap_log_error(APLOG_MARK, APLOG_ERR, rv , NULL,
 			"Aborting connection, couldn't read header.");
+
 		APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 		ap_pass_brigade(c->output_filters, bb_out);
 		break;

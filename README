@@ -137,7 +137,7 @@ EPPCommandRoot defines how mod_epp will build the path to the script
 
 EPPSessionRoot defines how mod_epp will build the path to the script
 	handling any session handling events. This includes
-	"hello", "login", "logout" and "bye".
+	"hello", "login", and "logout".
 
 EPPErrorRoot is the base path for all error handler calls. These
 	can be cgi-scripts which can make use of the following parameters:

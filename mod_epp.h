@@ -11,7 +11,6 @@ extern "C" {
 #endif
 
 #define EPP_TCP_HEADER_SIZE 4		/* just one longword */
-#define EPP_CHUNK_SIZE 2048		/* try to read that many bytes at once */
 #define EPP_MAX_FRAME_SIZE 65536	/* don't accept larger xml data blocks */
 #define TRIDSIZE 128			/* actually, it should be 3 to 64 chars,
 					   but due to unicode we'll give it more room. */
@@ -57,15 +56,12 @@ module AP_MODULE_DECLARE_DATA epp_module;
  */
 #define EPP_BUILTIN_HELLO "<epp><hello/></epp>"
 
-/*
- * Translate a connection-close/timeout into:
- */
-#define EPP_BUILTIN_TIMEOUT "<epp><bye/></epp>"
 
 /*
- * the implicit HELLO command during a connection open
+ * Use this prefix in front of every self-generated error message
  */
 #define EPP_BUILTIN_ERROR_HEAD "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><epp xmlns=\"urn:ietf:params:xml:ns:epp-1.0\"  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"  xsi:schemaLocation=\"urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd\">" 
+
 
 /*
  * some return codes
