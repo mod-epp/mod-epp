@@ -191,7 +191,7 @@ return(APR_SUCCESS);
 
 epp_translate_xml_to_uri(apr_xml_doc *doc, char *b, apr_size_t b_size, epp_rec *er, apr_xml_elem **builtin)
 {
-apr_xml_elem *cred, *command, *c, *hello, *timeout;
+apr_xml_elem *cred, *command, *c, *hello, *bye;
 epp_conn_rec *conf = er->ur->conf;
 
 /*
@@ -216,21 +216,21 @@ if (hello != NULL)
 	}
 
 /*
- * Check for a timeout frame		THIS IS NOT REALLY EPP. 
- * 					Just a fake request on a timeout.
+ * Check for a bye frame		THIS IS NOT REALLY EPP. 
+ * 					Just a fake request on a timeout or connection error.
  */
-timeout = get_elem(doc->root->first_child, "timeout");
-if (timeout != NULL)
+bye = get_elem(doc->root->first_child, "bye");
+if (bye != NULL)
 	{
-	apr_snprintf(b, b_size, "%s/timeout", conf->session_root);
+	apr_snprintf(b, b_size, "%s/bye", conf->session_root);
 	if (builtin)
-		*builtin = timeout;
+		*builtin = bye;
 	return(APR_SUCCESS);
 	}
 
 
 /*
- * Not hello/timeout? Then it must be a <command>
+ * Not hello/bye? Then it must be a <command>
  */
 
 command = get_elem(doc->root->first_child, "command");
@@ -331,8 +331,9 @@ apr_xml_elem *clid_el, *pw_el;
 char clid[CLIDSIZE];
 char pw[PWSIZE];
 char *passwd;
-request_rec *r, *rr;
+request_rec *r;
 int retval;
+apr_status_t res;
 
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
 	"epp_login: entering");
@@ -348,7 +349,7 @@ if ((clid_el == NULL) || (pw_el == NULL))
 	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
 		"epp_login: clid or pw missing");
 	
-	epp_error_handler(er, "schema", 2001, NULL, "Error in login.");
+	epp_error_handler(er, "schema", 2001, NULL, "Error in login (clID and pw must be present).");
 	return(EPP_PROT_ERROR);
 	}
 
@@ -364,25 +365,36 @@ er->ur->auth_string = apr_psprintf(er->ur->pool, "Basic %s", ap_pbase64encode(er
 r = epp_create_request(er->ur);
 apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
 
-rr = ap_sub_req_method_uri("GET", er->ur->conf->authuri, r, er->ur->c->output_filters);
-ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
-	"epp_login: after req_meth: status = %d", rr->status);
+r->the_request	= (char *) er->ur->conf->authuri;
+r->uri 		= (char *) er->ur->conf->authuri;
+r->assbackwards    = 0;         /* I don't want headers. */
+r->method          = "GET";
+r->method_number   = M_GET;
+r->protocol        = "INCLUDED";
 
-if (rr->status == HTTP_OK)
+/*
+ * ap_process_request_internal does all the auth checks, but does not
+ * actually call the handler. Just what we want.
+ */
+if ((res = ap_process_request_internal(r)) == OK) 
 	{
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
+		"epp_login (success): after ap_process_request_internal: res = %d", res);
+
 	er->ur->authenticated = 1;
-	if (rr != NULL) 
-		ap_destroy_sub_req(rr);
+	apr_pool_destroy(r->pool);
 	return(APR_SUCCESS);
 	}
 else
 	{
-	if (rr != NULL) 
-		ap_destroy_sub_req(rr);
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS , NULL,
+		"epp_login (fail): after ap_process_request_internal: res = %d", res);
+
 	er->ur->authenticated = 0;
+	apr_pool_destroy(r->pool);
+	return(APR_BADARG);
 	}
-	
-return(APR_SUCCESS);
+/* not reached */
 }
 
 /* 
@@ -459,6 +471,12 @@ rv = APR_SUCCESS;
 if (builtin && !strcmp("login",builtin->name))
 {
 	rv = epp_login(er, builtin);
+	if (rv != APR_SUCCESS)
+		{
+		epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
+		return;
+		}
+
 }
 
 if (builtin && !strcmp("logout",builtin->name))
@@ -514,33 +532,34 @@ if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builti
 
 	ap_add_input_filter("XMLCGI_INPUT", (void *) er, r, r->connection);
 
+	r->assbackwards    = 0;         /* I don't want headers. */
+	r->method          = "POST";
+	r->method_number   = M_POST;
+	r->protocol        = "INCLUDED";
+	r->uri		   = uri;      
+	r->the_request     = uri;       /* make sure the logging is correct */
 
-
-
-        rr = ap_sub_req_method_uri("POST", uri, r, er->ur->c->output_filters);
-	rr->the_request = uri;
-	retval = ap_run_sub_req(rr);
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"ap_run_sub_req returned %d", retval);
-/*	rr->request_time	   = apr_time_now(); */
 	/*
-	 * make sure the error status is logged correctly.
+	 * Fake Basic Auth.
 	 */
-	if(retval) 
-		rr->status = retval;
-	ap_run_log_transaction(rr); 
+	if (er->ur->authenticated)
+		apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
+
+	ap_process_request(r);
+
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"request status = %d", r->status);
+
 	/*
 	 * did it work?
 	 */
-	if (retval != 0)
+	if (r->status != HTTP_OK)
 		{
 		ap_fputs(er->ur->c->output_filters, er->bb_out, "<epp> ERROR </epp>");
 		ap_fflush(er->ur->c->output_filters, er->bb_out);
 		}
 
-	ap_fflush(er->ur->c->output_filters, er->bb_out);
-	if (rr != NULL) 
-		ap_destroy_sub_req(rr);
+	apr_pool_destroy(r->pool);
 }
 
 

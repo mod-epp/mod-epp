@@ -86,13 +86,17 @@ somewhat organised and focused.
 
 	b) issue a fake GET request to trigger the SSL renegotiation
 
+    I went for b).  /ol/2k2/12/18.
+
 
 * transfer of SSL info to the CGI environment.
 	- looks good now, except for
 	http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057
 * check for memory leaks (esp. for long connections)
 * generate proper error messages incl. clTRIDs
+	Done for most parts.
 * defined interface to cgis on when to close the connection.
+* check the timeout / connection close code
 
 
 

@@ -56,9 +56,9 @@ module AP_MODULE_DECLARE_DATA epp_module;
 #define EPP_BUILTIN_HELLO "<epp><hello/></epp>"
 
 /*
- * Translate a timeout into:
+ * Translate a connection-close/timeout into:
  */
-#define EPP_BUILTIN_TIMEOUT "<epp><timeout/></epp>"
+#define EPP_BUILTIN_TIMEOUT "<epp><bye/></epp>"
 
 /*
  * the implicit HELLO command during a connection open

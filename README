@@ -118,7 +118,7 @@ EPPCommandRoot defines how mod_epp will build the path to the script
 
 EPPSessionRoot defines how mod_epp will build the path to the script
 	handling any session handling events. This includes
-	"hello", "login", "logout" and "timeout".
+	"hello", "login", "logout" and "bye".
 
 EPPErrorRoot is the base path for all error handler calls. These
 	can be cgi-scripts which can make use of the following parameters:
@@ -155,6 +155,15 @@ EPPAuthURI is accessed during the EPP <login> command. You should protect
 		AuthUserFile <some-path>/htpasswd
 		require valid-user
 	</Location>
+
+	The rationale for this setup is the following: As the
+	authentication procedure could be expensive, we decided
+	not to require apache authentication on the normal EPP
+	commands. By issuing a pseudo-request on login, the
+	expensive checks can be performed just once for all commands.
+
+	In such a setup you have to make sure that the EPP command
+	scripts are *not* callable via a normal HTTP port.
 
 
 SSL SUPPORT
