@@ -104,24 +104,12 @@ EPPProtocol On
 Inside the <VirtualHost> context you can specify further 
 parameters concerning mod_epp (listed here with the defaults):
 
-EPPXMLParseError        /epp/error/xmlparsing
-EPPXMLSchemaError       /epp/error/schema
-EPPProtocolError        /epp/error/protocol
 EPPCommandRoot          /epp/command
 EPPSessionRoot          /epp/session
+EPPErrorRoot            /epp/error
 EPPAuthURI              /epp/auth/login
 
 Detailed description:
-
-EPPXMLParseError specifies which path (url space!) to call when the XML
-	parsing failed for the received EPP message.
-
-EPPXMLSchemaError specifies what to call when mod_epp cannot make sense of
-	the XML tree.
-
-EPPProtocolError specifies the error uri to use when an EPP protocol
-	violation is detected. This concerns primarily EPP state-machine
-	and authentication problems.
 
 EPPCommandRoot defines how mod_epp will build the path to the script
 	handling any command. If the EPP message contained e.g.
@@ -131,6 +119,26 @@ EPPCommandRoot defines how mod_epp will build the path to the script
 EPPSessionRoot defines how mod_epp will build the path to the script
 	handling any session handling events. This includes
 	"hello", "login", "logout" and "timeout".
+
+EPPErrorRoot is the base path for all error handler calls. These
+	can be cgi-scripts which can make use of the following parameters:
+
+		code	EPP error code (decimal number)
+		cltrid	Client Transaction ID (if available)
+		msg	Human readable error message
+
+	Currently, mod_epp will call the following scripts unter
+	EPPErrorRoot:
+
+		parse		XML parsing error.
+		schema		If a violation of the EPP schema is detected.
+				(i.e.  mod_epp cannot make sense of the XML 
+				tree.)
+		protocol	Wrong sequence of EPP frames detected.
+				This concerns primarily EPP state-machine 
+				problems.)
+		authrequired	Authentication required, but not supplied.
+		internal	mod_epp internal error.
 
 EPPAuthURI is accessed during the EPP <login> command. You should protect
 	that URI with whatever access control mechanism you want

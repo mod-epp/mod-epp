@@ -43,6 +43,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 #define EPP_DEFAULT_ERROR_PROTOCOL "/epp/error/protocol"
 #define EPP_DEFAULT_COMMAND_ROOT "/epp/command"
 #define EPP_DEFAULT_SESSION_ROOT "/epp/session"
+#define EPP_DEFAULT_ERROR_ROOT "/epp/error"
 
 #define EPP_CONTENT_TYPE_CGI "multipart/form-data; boundary=--BOUNDARY--"
 #define EPP_CONTENT_FRAME_CGI "----BOUNDARY--\r\nContent-Disposition: form-data; name=\"frame\"\r\n\r\n"
@@ -58,6 +59,11 @@ module AP_MODULE_DECLARE_DATA epp_module;
  * Translate a timeout into:
  */
 #define EPP_BUILTIN_TIMEOUT "<epp><timeout/></epp>"
+
+/*
+ * the implicit HELLO command during a connection open
+ */
+#define EPP_BUILTIN_ERROR_HEAD "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><epp xmlns=\"urn:ietf:params:xml:ns:epp-1.0\"  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"  xsi:schemaLocation=\"urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd\">" 
 
 /*
  * some return codes
@@ -76,6 +82,7 @@ typedef struct epp_conn_rec {
     char *error_protocol;
     const char *command_root;
     const char *session_root;
+    const char *error_root;
     const char *authuri;
 
 } epp_conn_rec;
@@ -115,11 +122,7 @@ typedef struct epp_rec {
 
 } epp_rec;
 
-
-int process_epp_connection_internal(request_rec *r, apr_bucket_brigade *bb_in, apr_bucket_brigade *bb_out);
-
-apr_status_t ap_epp_tcp_sendelement(ap_filter_t *f, apr_bucket_brigade *bb, char *e);
-
+apr_status_t epp_error_handler(epp_rec *er, char *script, int code, char *cltrid, char *errmsg);
 
 
 #ifdef __cplusplus
