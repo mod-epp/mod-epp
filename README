@@ -257,6 +257,9 @@ something like this:
 Bug Alert: The client CERT does not show up in the first
 (fake) hello request.
 
+Bug Alert 2: Please have a look at 
+	http://nagoya.apache.org/bugzilla/show_bug.cgi?id=18339
+
 
 REQUEST/SCRIPT INTERFACE
 ------------------------
