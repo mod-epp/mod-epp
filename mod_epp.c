@@ -144,9 +144,9 @@ void xml_firstcdata_strncat(char *dest, size_t dstsize, apr_xml_elem *elem)
 {
 apr_text *t;
 
+dstsize--;
 dest[dstsize] = 0;
 dest[0] = 0;
-dstsize--;
 
 for (t = elem->first_cdata.first; t; t = t->next) 
 	{
