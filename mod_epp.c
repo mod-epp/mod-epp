@@ -80,6 +80,7 @@ apr_pool_t *p;
 request_rec *r;
 
 apr_pool_create(&p, ur->pool);
+apr_pool_tag(p, "mod_epp_request");	/* helps debugging */
 
 r                  = apr_pcalloc(p, sizeof(*r));
 r->pool            = p;
@@ -300,7 +301,7 @@ r = epp_create_request(er->ur);
 e = (errmsg) ? ap_escape_uri(r->pool, errmsg) : "";
 id = (cltrid) ? ap_escape_uri(r->pool, cltrid) : "";
 
-apr_snprintf(req, sizeof(req), "%s/%s?code=%d&cltrid=%s&msg=%s", conf->error_root, 
+apr_snprintf(req, sizeof(req), "%s/%s?code=%d&clTRID=%s&msg=%s", conf->error_root, 
 			script, code, id, e);
 ap_parse_uri(r, req);
 
@@ -675,7 +676,7 @@ static int epp_process_connection(conn_rec *c)
     epp_rec *er;
     epp_rec greeting_er;
     unsigned long framelen, framelen_n;
-    apr_pool_t *p;
+    apr_pool_t *p, *p_er;
     apr_bucket_brigade *bb_in;
     apr_bucket_brigade *bb_tmp;
     apr_bucket_brigade *bb_out;
@@ -690,6 +691,7 @@ static int epp_process_connection(conn_rec *c)
 
     char *xml;
 
+
     epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
                                                               &epp_module);
 
@@ -697,9 +699,12 @@ static int epp_process_connection(conn_rec *c)
         return DECLINED;
     }
 
+/*    apr_pool_tag(c->pool, "epp_connection_pool"); */
+
     ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
 
     apr_pool_create(&p, c->pool);
+    apr_pool_tag(p, "epp_UR_pool");
     ur 		= apr_palloc(p, sizeof(*ur));
     ur->pool 	= p;
     ur->c 	= c;
@@ -718,9 +723,9 @@ static int epp_process_connection(conn_rec *c)
 
 
     /* send greeting */
-    apr_pool_create(&p, ur->pool);
-    er = apr_palloc(p, sizeof(*er));
-    er->pool = p;
+    apr_pool_create(&p_er, ur->pool); 
+    er = apr_palloc(p_er, sizeof(*er));
+    er->pool = p_er;
     er->ur = ur;
     er->bb_out = bb_out;
     rv = epp_do_hello(er);
@@ -734,6 +739,8 @@ static int epp_process_connection(conn_rec *c)
 	
 	goto close_connection;
     }
+
+    apr_pool_destroy(p_er);
 
     /* loop over all epp frames */
     for ( ; ; )
@@ -757,9 +764,15 @@ static int epp_process_connection(conn_rec *c)
 				"Error reading EPP header (timeout or connection close). Aborting connection.");
 			apr_brigade_destroy(bb_tmp);
 
+			er = apr_palloc(p, sizeof(*er));
+			er->pool = p;
+			er->ur = ur;
+			er->bb_out = bb_out;
+
 			er->orig_xml = EPP_BUILTIN_TIMEOUT;
 			er->orig_xml_size = strlen(EPP_BUILTIN_TIMEOUT);
 			epp_process_frame(er);
+			/* as we close the connection, we don't need to deallocate now. */
 
     			APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 			ap_pass_brigade(c->output_filters, bb_out);
@@ -773,7 +786,7 @@ static int epp_process_connection(conn_rec *c)
 			APR_BUCKET_REMOVE(e);
 			APR_BRIGADE_INSERT_TAIL(bb_out, e);
 			ap_pass_brigade(c->output_filters, bb_out);
-			return APR_SUCCESS;
+			goto close_connection;
 			}
 
 		APR_BRIGADE_CONCAT(bb_in, bb_tmp);   
@@ -812,12 +825,13 @@ static int epp_process_connection(conn_rec *c)
 	{
 		ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
 			"EPP frame too large (%ld bytes). aborting.", framelen);
-		return(OK);
+		goto close_connection;
+		/* XXX todo: send a meaningfull error message. */
 	}
 
-    	apr_pool_create(&p, ur->pool);
-    	er = apr_palloc(p, sizeof(*er));
-	er->pool = p;
+	apr_pool_create(&p_er, ur->pool); 
+    	er = apr_palloc(p_er, sizeof(*er));
+	er->pool = p_er;
 	er->ur = ur;
 	er->bb_out = bb_out;
 
@@ -844,7 +858,6 @@ static int epp_process_connection(conn_rec *c)
 		APR_BRIGADE_INSERT_TAIL(bb_out, apr_bucket_eos_create(c->bucket_alloc));
 		ap_pass_brigade(c->output_filters, bb_out);
 		goto close_connection;
-		return OK;
 		}
 	APR_BRIGADE_CONCAT(bb_in, bb_tmp);   
 	}
@@ -865,6 +878,8 @@ static int epp_process_connection(conn_rec *c)
  */
 
 	epp_process_frame(er);
+
+	apr_pool_destroy(p_er);
 
 
 /*
@@ -894,6 +909,8 @@ static int epp_process_connection(conn_rec *c)
 	}
 
 close_connection:
+
+    apr_pool_destroy(p);	/* not really needed */
     return OK;
 }
 
@@ -912,6 +929,11 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     apr_off_t bb_len;
  
     epp_user_rec *ur = f->ctx;
+
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+    	"epp_tcp_out_filter: entering.");
+
+/*    sleep(5); */
 
     rv = apr_brigade_length(bb, 1, &bb_len);
     len = htonl(bb_len + 4);		/* len includes itself */

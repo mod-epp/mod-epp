@@ -15,7 +15,7 @@ use CGI qw/:standard/;
 $q = new CGI;
 
 
-my $cltrid = $q->param("cltrid");
+my $cltrid = $q->param("clTRID");
 my $code = $q->param("code");
 my $msg = $q->param("msg");
 

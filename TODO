@@ -93,11 +93,20 @@ somewhat organised and focused.
 	- looks good now, except for
 	http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057
 * check for memory leaks (esp. for long connections)
+	- I did a lot of testing, and I think the code is clean.
+	- This is hard to verify as freeing memory pools does not
+	  automatically deallocate the memory.
+	- memory still seems to be leaking while passing data
+	  from the CGI scripts to the client. You can test that
+	  with *big* EPP reply frames.
+	/ol/2k3/01/20/
 * generate proper error messages incl. clTRIDs
 	Done for most parts.
 * defined interface to cgis on when to close the connection.
+	Done. The CGI have to send a "Connection: close" in the reply header.
 * check the timeout / connection close code
 * configuration finetuning.
 	i.e. allow for global defs and merge in Vhost specific changes.
 * generate a session identifier and pass it as Cookie to the scripts..
+* check error handling on incomplete installs.
 

@@ -5,14 +5,51 @@
 OVERVIEW
 --------
 
-This module implements the EPP over TCP protocol as defined
-in draft-ietf-provreg-epp-0(6|7).txt and draft-ietf-provreg-epp-tcp-05.txt
-as an Apache 2.0 module. This is *not* a full implementation
-of EPP, this module just makes it possible to write an EPP
-server as a set of CGI scripts.
+This Apache 2.0 module implements the EPP over TCP protocol as defined
+in draft-ietf-provreg-epp-tcp-05.txt and the session management parts of
+draft-ietf-provreg-epp-0(6|7).txt.
+
+This is *not* a full implementation of EPP, this module just makes it
+possible to write an EPP server as a set of CGI scripts.
+
+
+
+RATIONALE
+---------
+
+EPP is an XML-based protocol, but it does not utilise one of the common
+XML based transaction protocols like SOAP, XML-RPC or HTTP. Writing
+an EPP server does not only involve programming the registry logic,
+as all the server infrastructure (authentication, logging, security,
+build-system, portability, ...) cannot be based on a well established
+framework. In our opinion, this is the main reason why there is no open
+source implementation of server-side EPP.
+
+Fortunately, the Apache 2.0 HTTP server is versatile and flexible enough
+to accommodate other protocols than HTTP through the "Module" extension
+mechanism. As part of Apache's support for DAV, a basic set of XML
+parsing and handling is already included in the Apache framework.
+
+
+
+IMPLEMENTATION
+--------------
+
+mod_epp implements an Apache 2.0 "connection handler" which reads EPP
+frames (as encapsulated according to the EPP/TCP spec), does some
+rudimentary XML parsing and converts the data to a normal Apache request
+object which can be handled by the e.g. a CGI script.
+
+The actual EPP command (as XML text) is passed to the handler encoded as
+HTTP form-encoded data, which makes it accessible to normal HTML form
+processing environments.
+
+On the output side, mod_epp installs an "output filter" which will
+encapsulate the output of the actual EPP processor (e.g. the CGI-script)
+in an EPP/TCP frame.
 
 As of the current version, mod_epp does not validate incoming
-EPP requests according to the XML schema. It only checks
+EPP requests according to the EPP XML schema. It only checks
 for XML-wellformedness and some rudimentary constraints
 on the XML structure insofar as needed to
 
@@ -22,47 +59,11 @@ on the XML structure insofar as needed to
 
 
 
-
-RATIONALE
----------
-
-EPP is an XML-based protocol, but it does not utilize one of the common
-XML based transaction protocols like SOAP, XML-RPC or HTTP. Writing
-an EPP server is thus not a simple exercise as all the server
-infrastructure (authentication, logging, security, build-system,
-portability, ...) cannot be based on a well established framework.
-In our opinion, this is the main reason why there is no
-open source implementation of server-side EPP.
-
-Fortunately, the Apache 2.0 HTTP server is versatile and flexible
-enough to accommodate other protocols than HTTP through
-the "Module" extension mechanism. As part of Apache's support
-for DAV, a basic set of XML parsing and handling is already
-included in the Apache framework.
-
-
-
-IMPLEMENTATION
---------------
-
-mod_epp implements an Apache 2.0 "connection handler" which reads
-EPP frames (as encapsulated according to the EPP/TCP spec),
-does some rudimentary XML parsing and converts the data to
-a normal Apache request object which can be handled by the
-e.g. a CGI script.
-
-The actual EPP command (as XML text) is passed to the handler encoded as
-HTTP form-encoded data, which makes it accessible to normal HTML form
-scripting environments.
-
-On the output side, mod_epp installs an "output filter" which will
-encapsulate the output of the actual EPP processor (e.g. the CGI-script)
-in an EPP/TCP frame.
-
-
-
 INSTALLATION
 ------------
+
+You should have a recent Apache 2.0, compiled and installed (including
+header files!).
 
 Unpack the distribution and run:
 
@@ -95,7 +96,7 @@ for a possible workaround.
 CONFIGURATION
 -------------
 
-All configuration is done inside the mail Apache config
+All configuration is done inside the main Apache config
 file "httpd.conf". See also the comments in the example
 file which is included in the mod_epp distribution.
 
@@ -136,7 +137,7 @@ EPPErrorRoot is the base path for all error handler calls. These
 	can be cgi-scripts which can make use of the following parameters:
 
 		code	EPP error code (decimal number)
-		cltrid	Client Transaction ID (if available)
+		clTRID	Client Transaction ID (if available)
 		msg	Human readable error message
 
 	Currently, mod_epp will call the following scripts unter
@@ -187,7 +188,7 @@ EPPVersion specifies which draft version of the protocol this
 	"6" and "7". The only difference is the handling of the
 	<login> command.
 
-	For version 6, this is a valid EPP frame (namespaces & co omitted)
+	For version 6, this is a valid EPP frame (name-spaces & co omitted)
 
 		<epp>
 		 <command>
@@ -254,18 +255,85 @@ a core dump from open_ssl. Keep that in mind if you specify
 Bug Alert2: The client CERT does not show up in the first
 (fake) hello request.
 
-SCRIPTS
--------
 
-The directory htdocs-sample contains some examples of _static_
-responses to common EPP queries. They are *not* useful for any
-real purposes. A sample implementation of a real EPP server
-is outside the scope of mod_epp; please see 
-http://sourceforge.net/projects/aepps/ for such scripts.
+REQUEST/SCRIPT INTERFACE
+------------------------
 
-A *VERY* basic set of demonstration scripts are in the
-examples directory.
+As explained above, mod_epp translates EPP commands into HTTP-like
+requests, where all parameters and arguments are passed like they are
+for HTML FORMs. It is thus possible to use any normal CGI library to
+parse the requests and extract the arguments. While it is certainly
+possible to handle the requests in various fashion, I will concentrate
+on the CGI case here.
 
+The script output must conform to the CGI spec, thus it has to
+generate a "Content-Type:" header. Currently, mod_epp does not
+care what you specify there, it will simply pass the body
+to the client.
+
+If the script wants to tear down the connection to the client,
+it has to include "Connection: close" in the header of the
+answer. This convention was selected in analogy to HTTP 1.1.
+
+Command Interface:
+- - - - - - - - -
+	
+	EPP commands are translated to HTTP POST commands, using
+	"Content-Type: multipart/form-data" to encapsulate the
+	arguments. (Exception: the pseudo <hello> request on
+	connection open is done as HTTP GET with URL-encoded
+	arguments.) The following two parameters will be passed:
+
+	"frame": This contains the XML of the EPP command received
+		from the client. This is *not* the original XML text
+		as received from the client; it is a serialisation of
+		the XML tree built from the client's message.
+
+		Thus this is guaranteed to be valid XML.
+
+!  		Although mod_epp does some _very_ basic tests on the 
+!		XML structure, mod_epp does *NOT* do schema verification.
+
+	"clTRID": If mod_epp succeeds in extracting the "client
+		transaction ID" of the request, it will pass it
+		along to the scripts as the clTRID parameter.
+		(Can be empty.)
+
+		The rationale behind this feature is, that if
+		the CGI cannot parse the XML due to schema violations
+		it still can formulate an error reply tagged
+		with the correct clTRID.
+
+	
+	Session commands use the same interface.
+
+
+Error Interface:
+- -  - - - - - -
+	
+	If mod_epp detects an error (e.g. invalid XML, failed
+	login, problems with CGIs), it first tries to call an
+	external error handler (using a GET request), before 
+	falling back to an internally generated error message.
+
+	These error handles receive the following parameters.
+
+	"code"		4-digit error code as defined in the RFC
+	"clTRID"	Client transaction ID (can be empty)
+	"msg"		Human readable error message
+
+
+EXAMPLE SCRIPTS
+---------------
+
+The directory "examples" contains some static responses as well
+as some scripts which generate simple answers to some common EPP
+queries. They are *not* useful for a real EPP server, they just
+serve as script interface examples.
+
+A sample implementation of a real EPP server is outside the scope of
+mod_epp; please see http://sourceforge.net/projects/aepps/ for such
+scripts.
 
 AUTHOR
 ------
