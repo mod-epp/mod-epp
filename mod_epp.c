@@ -185,22 +185,27 @@ return(APR_SUCCESS);
  * 	APR_BADARG	schema error
  * 	
  *
- * If the command is a session handling one, 
- * 	a) use EPPSessionRoot instead of EPPCommandRoot to build URI
- * 	b) return the XML element in builtin
+ * The URI will be returned in "path". It will be either based
+ * on EPPSessionRoot or EPPCommandRoot.
+ *
+ * "element" will point to the relevant node in the XML tree.
+ *
+ * "login_needed" will be true if the client has to be logged in
+ * in order to access this URI. 
  *
  */
 
-epp_translate_xml_to_uri(apr_xml_doc *doc, char *b, apr_size_t b_size, epp_rec *er, apr_xml_elem **builtin)
+apr_status_t epp_translate_xml_to_uri(apr_xml_doc *doc, epp_rec *er, 
+		char *path, apr_size_t path_size, apr_xml_elem **element, int *login_needed)
 {
 apr_xml_elem *cred, *command, *c, *hello, *bye;
 epp_conn_rec *conf = er->ur->conf;
 
 /*
- * default to a schema error
+ * default to a schema error and no login needed.
  */
-apr_snprintf(b, b_size, "%s/schema", conf->error_root);
-
+apr_snprintf(path, path_size, "%s/schema", conf->error_root);
+*login_needed = 0;
 
 if(strcmp("epp",doc->root->name))
 	return(APR_BADARG);
@@ -211,22 +216,22 @@ if(strcmp("epp",doc->root->name))
 hello = get_elem(doc->root->first_child, "hello");
 if (hello != NULL)
 	{
-	apr_snprintf(b, b_size, "%s/hello", conf->session_root);
-	if (builtin)
-		*builtin = hello;
+	apr_snprintf(path, path_size, "%s/hello", conf->session_root);
+	if (element)
+		*element = hello;
 	return(APR_SUCCESS);
 	}
 
 /*
- * Check for a bye frame		THIS IS NOT REALLY EPP. 
- * 					Just a fake request on a timeout or connection error.
+ * Check for a bye frame	THIS IS NOT REALLY EPP. 
+ * 				Just a fake request on a timeout or connection error.
  */
 bye = get_elem(doc->root->first_child, "bye");
 if (bye != NULL)
 	{
-	apr_snprintf(b, b_size, "%s/bye", conf->session_root);
-	if (builtin)
-		*builtin = bye;
+	apr_snprintf(path, path_size, "%s/bye", conf->session_root);
+	if (element)
+		*element = bye;
 	return(APR_SUCCESS);
 	}
 
@@ -243,7 +248,11 @@ if (command == NULL)
 c = command->first_child;
 while (c != NULL)
 	{
-	if (!strcasecmp(c->name, "clTRID")) 
+	/*
+	 * These two tags are not relevant in the search for the command.
+	 */
+	if ((!strcasecmp(c->name, "clTRID")) || 
+	    (!strcasecmp(c->name, "extension"))) 
 		{
 		c = c->next;
 		continue;
@@ -261,13 +270,17 @@ while (c != NULL)
 
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"XML: found command = %s.", c->name);
-	apr_snprintf(b, b_size, "%s/%s", conf->command_root, c->name);
 
-	if ((!strcmp("login",c->name) || !strcmp("logout",c->name)) && builtin)
-		{
-		*builtin = c;
-		apr_snprintf(b, b_size, "%s/%s", conf->session_root, c->name);
-		}
+	if (element)
+		*element = c;
+
+	if (!strcmp("login",c->name) || !strcmp("logout",c->name))
+		apr_snprintf(path, path_size, "%s/%s", conf->session_root, c->name);
+	  else
+		apr_snprintf(path, path_size, "%s/%s", conf->command_root, c->name);
+	
+	if (strcmp("login",c->name))
+	 	*login_needed = 1;
 
 	return(APR_SUCCESS);
 	}
@@ -294,14 +307,20 @@ apr_status_t epp_error_handler(epp_rec *er, char *script, int code, char *cltrid
 request_rec *r, *rr;
 char req[400];
 char *e, *id;
+char id_xml[100] = "";
 epp_conn_rec *conf = er->ur->conf;
 
 
 r = epp_create_request(er->ur);
 er->r = r;
 
-e = (errmsg) ? ap_escape_uri(r->pool, errmsg) : "";
-id = (cltrid) ? ap_escape_uri(r->pool, cltrid) : "";
+/*
+ * html escaping is close enough to XML escaping.
+ */
+e 	= (errmsg) ? ap_escape_uri(r->pool, errmsg) : "";
+id 	= (cltrid) ? ap_escape_uri(r->pool, cltrid) : "";
+if(cltrid) 
+	apr_snprintf(id_xml, sizeof(id_xml), "<clTRID>%s</clTRID>", id);
 
 apr_snprintf(req, sizeof(req), "%s/%s?code=%d&clTRID=%s&msg=%s", conf->error_root, 
 			script, code, id, e);
@@ -311,24 +330,24 @@ r->assbackwards    = 0;		/* I don't want headers. */
 r->method          = "GET";
 r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
-r->the_request     = "--mod_epp--error_handler--";
+r->the_request     = req;
 
 ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection);
+ap_update_child_status(r->connection->sbh, SERVER_BUSY_WRITE, r);
 ap_process_request(r);
+if (ap_extended_status)
+	ap_increment_counts(r->connection->sbh, r);
+
+
+
 if (r->status != HTTP_OK)	/* something wrong with the script runtime? Go for simple version. */
 	{
 	ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS , NULL,
 		"epp_error_handler: calling %s failed.", req);
 
-	/*
-	 * html escaping is close enough to XML escaping.
-	 */
-	e = (errmsg) ? ap_escape_html(r->pool, errmsg) : "";
-	id = (cltrid) ? ap_escape_html(r->pool, cltrid) : "";
-	
-	apr_snprintf(req, sizeof(req), "%s\n<response><result code=\"%d\"><msg>%s</msg>\n</result><trID><clTRID>%s</clTRID></trID></response></epp>", 
+	apr_snprintf(req, sizeof(req), "%s\n<response><result code=\"%d\"><msg>%s</msg>\n</result><trID>%s</trID></response></epp>", 
 			EPP_BUILTIN_ERROR_HEAD,
-			code, e, id);
+			code, e, id_xml);
 	ap_fputs(er->ur->c->output_filters, er->bb_out, req);
 	ap_fflush(er->ur->c->output_filters, er->bb_out);
 	}
@@ -336,7 +355,14 @@ apr_pool_destroy(r->pool);
 return(APR_SUCCESS);
 }
 
-
+/*
+ * This function implements the EPP login procedure.
+ *
+ * It does not generate the answer to the client, that is left 
+ * to a "normal" handler. Here we just check the password
+ * and set the internal state.
+ *
+ */
 apr_status_t epp_login(epp_rec *er, apr_xml_elem *login)
 {
 apr_xml_elem *clid_el, *pw_el;
@@ -352,7 +378,10 @@ ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
 	"epp_login: entering");
 
 if (er->ur->authenticated)
+	{
+	epp_error_handler(er, "login", 2002, er->cltrid, "Already logged in. Use <logout> first.");
 	return EPP_PROT_ERROR;
+	}
 /*
  * In version 6, <clID> and <pw> do not appear within <login>,
  * but in a silbling to <login> called <creds>.
@@ -431,6 +460,8 @@ else
 
 	er->ur->authenticated = 0;
 	apr_pool_destroy(r->pool);
+
+	epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
 	return(APR_BADARG);
 	}
 /* not reached */
@@ -441,7 +472,10 @@ else
  */
 apr_status_t epp_logout(epp_rec *er, apr_xml_elem *login)
 {
-er->ur->authenticated = 0;
+er->ur->authenticated	= 0;
+er->ur->clid[0]		= 0;
+er->ur->pw[0] 		= 0;
+er->ur->auth_string[0]	= 0;
 return(APR_SUCCESS);
 }
 
@@ -458,7 +492,8 @@ epp_process_frame(epp_rec *er)
 {
 apr_xml_parser *xml_p;
 apr_xml_doc *doc;
-apr_xml_elem *builtin = NULL;
+apr_xml_elem *tag = NULL;
+int login_needed;
 apr_status_t rv;
 char errstr[300];
 request_rec *r, *rr;
@@ -476,8 +511,6 @@ ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
 	"XML parser feed reports: %s", errstr);
 
 rv = apr_xml_parser_done(xml_p,&doc);
-er->doc = doc;
-
 apr_xml_parser_geterror(xml_p, errstr, sizeof(errstr));
 ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
 	"XML parser done reports: %s", errstr);
@@ -491,140 +524,131 @@ if (rv != APR_SUCCESS)
 	return;
 	}
 
+er->doc = doc;
+
 rv = epp_get_cltrid(er);
 if (rv != APR_SUCCESS)
 	{
 	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
 		"Schema error while looking for clTRID");
-	epp_error_handler(er, "schema", 2001, NULL, "Schema error while looking for clTRID");
+	epp_error_handler(er, "schema", 2001, NULL, "Detected a schema error while looking for clTRID");
 	return;
 	}
 
-rv = epp_translate_xml_to_uri(doc, uri, sizeof(uri), er, &builtin);
-ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-	"Translated EPP to %s", uri);
 
-/* XXX this needs to be rewritten */
+rv = epp_translate_xml_to_uri(doc, er, uri, sizeof(uri), &tag, &login_needed);
 
-if (rv == APR_SUCCESS)		/* ok, we got a successfull translation */
+ap_log_error(APLOG_MARK, ((rv == APR_SUCCESS) ? APLOG_DEBUG : APLOG_WARNING),
+		APR_SUCCESS, NULL, "Translated EPP to %s", uri);
+
+/*
+ * If translation failed, we already have the error URI here, thus we continue.
+ */
+
+if (tag && !strcmp("login",tag->name))
 	{
-	rv = APR_SUCCESS;
-	if (builtin && !strcmp("login",builtin->name))
+	rv = epp_login(er, tag);
+	if (rv != APR_SUCCESS)
 		{
-		rv = epp_login(er, builtin);
-		if (rv != APR_SUCCESS)
-			{
-			epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
-			return;
-			}
-		}
-
-	if (builtin && !strcmp("logout",builtin->name))
-		{
-		rv = epp_logout(er, builtin);
-		}
-
-	if (rv != APR_SUCCESS)	/* something went wrong with the builtins */
-		{
-		epp_error_handler(er, "protocol", 2001, er->cltrid, "Protocol error.");
-		return;
-		}
-
-
-	if (!er->ur->authenticated && !builtin)	/* everything here, which isn't a builtin requires auth */
-		{
-		ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
-			"I can't call %s without prior login.", uri);
-		epp_error_handler(er, "authrequired", 2002, er->cltrid, "You need to login first.");
+	/*
+	 * error message generation moved into epp_login.
+		epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
+	 */
 		return;
 		}
 	}
-else			/* translation failed. we have an error uri. no need for the checks. */
+
+if (!er->ur->authenticated && login_needed)	/* need login before continuing ? */
 	{
+	ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
+		"I can't call %s without prior login.", uri);
+	epp_error_handler(er, "authrequired", 2002, er->cltrid, "You need to login first.");
+	return;
 	}
 
+if (tag && !strcmp("logout",tag->name))
+	{
+	rv = epp_logout(er, tag);
+	}
 
 /*
  * now do the actual work
  */
 
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"XML: root node name = %s.", doc->root->name);
+r = epp_create_request(er->ur);
+er->r = r;
 
-
-	r = epp_create_request(er->ur);
-	er->r = r;
-	
-        apr_xml_to_text(r->pool,doc->root,APR_XML_X2T_FULL_NS_LANG, doc->namespaces ,NULL, &er->serialised_xml, 
-				&er->serialised_xml_size);
+apr_xml_to_text(r->pool,doc->root,APR_XML_X2T_FULL_NS_LANG, doc->namespaces ,NULL, &er->serialised_xml, 
+			&er->serialised_xml_size);
 
 /*
  * There seems to be a bug somewhere in the size calculations. 
  * If I use the returned serialised_xml_size, I get trailing garbage every now and then.
  * *shrug*, the let's go for strlen, as I hope that there are no null bytes in the XML.
  */
-	er->serialised_xml_size = strlen(er->serialised_xml);
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"XML: serialized xml size = %d.", er->serialised_xml_size);
-	sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI) 
-				+ strlen(EPP_CONTENT_CLTRID_CGI) 
-				+ strlen(er->cltrid) 
-				+ strlen(EPP_CONTENT_POSTFIX_CGI)
-				+ er->serialised_xml_size);
+er->serialised_xml_size = strlen(er->serialised_xml);
+ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+	"XML: serialized xml size = %d.", er->serialised_xml_size);
+sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI) 
+			+ strlen(EPP_CONTENT_CLTRID_CGI) 
+			+ strlen(er->cltrid) 
+			+ strlen(EPP_CONTENT_POSTFIX_CGI)
+			+ er->serialised_xml_size);
 
-	apr_table_set(r->headers_in, "Content-Type", "multipart/form-data; boundary=--BOUNDARY--");
-	apr_table_set(r->headers_in, "Content-Length", content_length);
+apr_table_set(r->headers_in, "Content-Type", "multipart/form-data; boundary=--BOUNDARY--");
+apr_table_set(r->headers_in, "Content-Length", content_length);
 
-	ap_add_input_filter("XMLCGI_INPUT", (void *) er, r, r->connection);
+ap_add_input_filter("XMLCGI_INPUT", (void *) er, r, r->connection);
 
-	r->assbackwards    = 0;         /* I don't want headers. */
-	r->method          = "POST";
-	r->method_number   = M_POST;
-	r->protocol        = "INCLUDED";
-	r->uri		   = uri;      
-	r->the_request     = uri;       /* make sure the logging is correct */
+r->assbackwards    = 0;         /* I don't want headers. */
+r->method          = "POST";
+r->method_number   = M_POST;
+r->protocol        = "INCLUDED";
+r->uri		   = uri;      
+r->the_request     = uri;       /* make sure the logging is correct */
 
+/*
+ * Fake Basic Auth.
+ */
+if (er->ur->authenticated)
+	{
+	apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
 	/*
-	 * Fake Basic Auth.
+	 * If the actual command or session URIs are not protected, no
+	 * REMOTE_USER CGI environment variable will be produced. Thus we 
+	 * fake it here.
 	 */
-	if (er->ur->authenticated)
-		{
-		apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
-		/*
-	 	 * If the actual command or session URIs are not protected, no
-		 * REMOTE_USER CGI environment variable will be produced. Thus we 
-		 * fake it here.
-	 	 */
-		r->user            = er->ur->clid;
-		}
+	r->user            = er->ur->clid;
+	}
 
-	ap_process_request(r);
+ap_update_child_status(r->connection->sbh, SERVER_BUSY_WRITE, r);
+ap_process_request(r);
+if (ap_extended_status)
+	ap_increment_counts(r->connection->sbh, r);
 
+ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+	"request status = %d", r->status);
+
+/*
+ * did it work?
+ */
+if (r->status != HTTP_OK)
+	{
+	ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
+		"Could not execute %s", uri);
+	epp_error_handler(er, "internal", 2400, NULL, "Internal error.");
+	}
+
+connection = apr_table_get(r->err_headers_out, "Connection");
+
+if (connection && !strncmp(connection, "close", 5))
+	{
+	er->ur->connection_close = 1;
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"request status = %d", r->status);
+		"CGI requested a connection close");
+	}
 
-	/*
-	 * did it work?
-	 */
-	if (r->status != HTTP_OK)
-		{
-		ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
-			"Could not execute %s", uri);
-		epp_error_handler(er, "internal", 2400, NULL, "Internal error.");
-		}
-
-	connection = apr_table_get(r->err_headers_out, "Connection");
-
-	if (connection && !strncmp(connection, "close", 5))
-		{
-		er->ur->connection_close = 1;
-		ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-			"CGI requested a connection close");
-		}
-
-
-
-	apr_pool_destroy(r->pool);
+apr_pool_destroy(r->pool);
 }
 
 
@@ -659,8 +683,11 @@ r->protocol        = "INCLUDED";
 r->the_request     = uri;	/* make sure the logging is correct */
 
 
+ap_update_child_status(r->connection->sbh, SERVER_BUSY_WRITE, r);
 ap_add_input_filter("EOS_INPUT", (void *) er, r, r->connection); 
 ap_process_request(r);
+if (ap_extended_status)
+	ap_increment_counts(r->connection->sbh, r);
 
 if (r->status != HTTP_OK)	/* something wrong with the script runtime */
 	{
@@ -752,6 +779,7 @@ static int epp_process_connection(conn_rec *c)
     /* loop over all epp frames */
     for ( ; ; )
 	{
+	ap_update_child_status(c->sbh, SERVER_BUSY_KEEPALIVE, NULL);
 /*
  * not enough data to read a complete header?
  */
@@ -848,6 +876,7 @@ static int epp_process_connection(conn_rec *c)
 
 	er->orig_xml = xml;
 	er->orig_xml_size = framelen;
+    	ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
 
 /*
  * Do we need more data in the brigade?
