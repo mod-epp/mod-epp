@@ -785,6 +785,8 @@ while(need_bytes > 0)
 
 	need_bytes -= size;
 	buf += size;
+
+	apr_brigade_cleanup(bb);
 	}
 
 apr_brigade_destroy(bb);

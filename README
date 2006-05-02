@@ -98,6 +98,7 @@ please have a look at:
  http://nagoya.apache.org/bugzilla/show_bug.cgi?id=18339 for more
  information including a patch.
 
+Success has been reported with Apache 2.0.55.
 
 CONFIGURATION
 -------------
