@@ -256,7 +256,7 @@ As explained above, mod_epp translates EPP commands into HTTP-like
 requests, where all parameters and arguments are passed like they are
 for HTML FORMs. It is thus possible to use any normal CGI library to
 parse the requests and extract the arguments. While it is certainly
-possible to handle the requests in various fashion, I will concentrate
+possible to handle the requests in various fashions, I will concentrate
 on the CGI case here.
 
 The script output must conform to the CGI spec, thus it has to

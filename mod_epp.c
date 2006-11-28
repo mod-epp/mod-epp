@@ -92,7 +92,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 void epp_make_cookie(epp_user_rec *ur)
 {
 apr_md5_ctx_t md5ctx;
-unsigned char hash[MD5_DIGESTSIZE];
+unsigned char hash[APR_MD5_DIGESTSIZE];
 const char *hex = "0123456789abcdef";
 char *r; 
 int i;
@@ -111,7 +111,7 @@ apr_md5_update(&md5ctx, (void *)pids, sizeof(pids));
 apr_md5_final(hash, &md5ctx);
 
 r = apr_cpystrn(ur->cookie, "session=", 9);
-for (i = 0; i < MD5_DIGESTSIZE; i++) 
+for (i = 0; i < APR_MD5_DIGESTSIZE; i++) 
 	{
 	*r++ = hex[hash[i] >> 4];
 	*r++ = hex[hash[i] & 0xF];
@@ -619,6 +619,7 @@ if (tag && !strcmp("logout",tag->name))
 r = epp_create_request(er->ur);
 er->r = r;
 
+apr_xml_quote_elem(r->pool,doc->root); /* hat tip Elias Sidenbladh */
 apr_xml_to_text(r->pool,doc->root,APR_XML_X2T_FULL_NS_LANG, doc->namespaces ,NULL, &er->serialised_xml, 
 			&er->serialised_xml_size);
 
