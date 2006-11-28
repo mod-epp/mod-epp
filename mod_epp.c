@@ -970,7 +970,8 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     unsigned long len;
     apr_off_t bb_len;
     request_rec *r;
-
+    int eos = 0;
+    
     epp_user_rec *ur = f->ctx;
     r = ur->er->r;
 
@@ -989,6 +990,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	bucket = APR_BUCKET_NEXT(bucket)) {
 
 	if (APR_BUCKET_IS_EOS(bucket)) {
+	        eos = 1;
     		ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
     			"epp_tcp_out_filter: Found an EOS bucket. Adding a FLUSH before it.");
 		APR_BUCKET_INSERT_BEFORE(bucket, flush);
@@ -1005,6 +1007,11 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
      */
     if ((bb_len > 0) && (r->status == 200))
 	{
+	/*
+	 * make really really sure the data is flushed to the client.
+	 */
+        if (!eos)
+                APR_BRIGADE_INSERT_TAIL(bb,flush);
     	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
     		"epp_tcp_out_filter: Prefix = %ld bytes.", bb_len);
 
