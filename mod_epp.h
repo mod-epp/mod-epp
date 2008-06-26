@@ -161,6 +161,7 @@ typedef struct epp_rec {
     epp_user_rec *ur;
     request_rec *r;
     apr_bucket_brigade *bb_out;
+    apr_bucket_brigade *bb_tmp;
 
     const char *serialised_xml;
     apr_size_t serialised_xml_size;

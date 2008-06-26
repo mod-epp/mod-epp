@@ -6,7 +6,7 @@ Version: $Id$
 OVERVIEW
 --------
 
-This Apache 2.0 module implements the EPP over TCP protocol as defined
+This Apache 2.x module implements the EPP over TCP protocol as defined
 in RFC3734 and the session management parts of RFC3730.
 
 This is *not* a full implementation of EPP, this module just makes it
@@ -24,7 +24,7 @@ build-system, portability, ...) cannot be based on a well established
 framework. In our opinion, this is the main reason why there is no open
 source implementation of server-side EPP.
 
-Fortunately, the Apache 2.0 HTTP server is versatile and flexible enough
+Fortunately, the Apache 2.x HTTP server is versatile and flexible enough
 to accommodate other protocols than HTTP through the "Module" extension
 mechanism. As part of Apache's support for DAV, a basic set of XML
 parsing and handling is already included in the Apache framework.
@@ -34,7 +34,7 @@ parsing and handling is already included in the Apache framework.
 IMPLEMENTATION
 --------------
 
-mod_epp implements an Apache 2.0 "connection handler" which reads EPP
+mod_epp implements an Apache 2.x "connection handler" which reads EPP
 frames (as encapsulated according to the EPP/TCP spec), does some
 rudimentary XML parsing and converts the data to a normal Apache request
 object which can be handled by e.g. a CGI script.
@@ -61,7 +61,7 @@ on the XML structure in so far as needed to
 INSTALLATION
 ------------
 
-You should have a recent Apache 2.0, compiled and installed (including
+You should have a recent Apache 2.x, compiled and installed (including
 header files!).
 
 Unpack the distribution and run:
@@ -74,12 +74,12 @@ LoadModule epp_module         modules/mod_epp.so
 
 into your httpd.conf file to load the module.
 
-See the man page of apxs (part of the Apache 2.0 httpd distribution)
+See the man page of apxs (part of the Apache 2.x httpd distribution)
 or http://www.onlamp.com/topics/apache/apache_modules for further
 information on compiling and installing Apache modules.
 
 The mod_epp module does not replace the HTTP functionality
-of Apache 2.0, the server can still be used to serve web pages
+of Apache 2.x, the server can still be used to serve web pages
 on a different port.
 
 There has been a change in the Apache internal filter API recently;
@@ -98,7 +98,12 @@ please have a look at:
  http://nagoya.apache.org/bugzilla/show_bug.cgi?id=18339 for more
  information including a patch.
 
-Success has been reported with Apache 2.0.55.
+Success has been reported with Apache 2.0.55. As of version 1.4,
+mod_epp also works with Apache 2.2. 
+
+(There is one issue, though: Some optimizations within Apache 2.2
+don't start the connection handler until the first bytes are received
+from the client. That's fine with HTTP, but not EPP. See below.)
 
 CONFIGURATION
 -------------
@@ -112,6 +117,11 @@ First of all, we need to tell Apache to listen on the EPP port:
 # from: http://www.iana.org/assignments/port-numbers
 # epp             700/tcp    Extensible Provisioning Protocol
 Listen  700
+
+# for Apache 2.2, we need to be called on connection open, not on
+# "data available", thus:
+AcceptFilter epp none
+Listen 700 epp
 
 To activate mod_epp for this port we use:
 
@@ -202,7 +212,7 @@ I removed this option.
 SSL SUPPORT
 -----------
 
-EPP can be layered on Apache 2.0 mod_ssl. The configuration should look
+EPP can be layered on Apache 2.x mod_ssl. The configuration should look
 something like this:
 
 
@@ -334,9 +344,9 @@ A sample implementation of a real EPP server is outside the scope of mod_epp.
 REVERSE PROXY SETUP
 -------------------
 
-It is possible to run a mod_epp enabled Apache 2.0 as proxy between
+It is possible to run a mod_epp enabled Apache 2.x as proxy between
 the world of EPP and HTTP. This is the ideal setup if your favorite
-scripting engine is not supported inside Apache 2.0. For example, you
+scripting engine is not supported inside Apache 2.x. For example, you
 can proxy to an Apache 1.3.x with PHP or mod_perl, or even to an IIS
 running ASP scripts.
 
@@ -369,7 +379,7 @@ seem to work in this setup. I'm investigating an alternative.
 AUTHOR
 ------
 
-This module is currently developed by Otmar Lendl under contract
+This module was developed by Otmar Lendl under contract
 from NIC.at. You can reach the author at lendl@nic.at.
 
 

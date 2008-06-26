@@ -810,7 +810,7 @@ static int epp_process_connection(conn_rec *c)
     epp_rec *er;
     unsigned long framelen, framelen_n;
     apr_pool_t *p, *p_er;
-    apr_bucket_brigade *bb_in;
+    apr_bucket_brigade *bb_tmp;
     apr_bucket_brigade *bb_out;
     apr_status_t rv;
 
@@ -845,7 +845,7 @@ static int epp_process_connection(conn_rec *c)
 
     /* create the brigades */
 
-    bb_in = apr_brigade_create(ur->pool, c->bucket_alloc);
+    bb_tmp = apr_brigade_create(ur->pool, c->bucket_alloc);
     bb_out = apr_brigade_create(ur->pool, c->bucket_alloc);
 
 
@@ -856,6 +856,7 @@ static int epp_process_connection(conn_rec *c)
     er->ur = ur;
     ur->er = er;
     er->bb_out = bb_out;
+    er->bb_tmp = bb_tmp;
     rv = epp_do_hello(er);
 
     if (rv != APR_SUCCESS)		/* this could be a SSL negotiation error */
@@ -966,14 +967,16 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
                                            apr_bucket_brigade * bb)
 {
     apr_bucket *header, *flush, *bucket;
+    apr_bucket_brigade *bb_tmp;
     apr_status_t rv = APR_SUCCESS;
     unsigned long len;
     apr_off_t bb_len;
     request_rec *r;
-    int eos = 0;
+    int found_eos = 0;
     
     epp_user_rec *ur = f->ctx;
     r = ur->er->r;
+    bb_tmp = ur->er->bb_tmp;
 
 /*
     ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
@@ -990,7 +993,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	bucket = APR_BUCKET_NEXT(bucket)) {
 
 	if (APR_BUCKET_IS_EOS(bucket)) {
-	        eos = 1;
+	        found_eos = 1;
     		ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
     			"epp_tcp_out_filter: Found an EOS bucket. Adding a FLUSH before it.");
 		APR_BUCKET_INSERT_BEFORE(bucket, flush);
@@ -998,6 +1001,17 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	}
     }
 
+    /* there could be more data coming (perhaps from a mod_proxy setup). Set the data aside */
+    if (!found_eos) {
+       APR_BRIGADE_CONCAT(bb_tmp, bb);
+       rv = apr_brigade_length(bb_tmp, 1, &bb_len);
+       ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+                       "epp_tcp_out_filter: No EOS bucket. length of bb_tmp is now %d.", bb_len);
+       return APR_SUCCESS;
+    }
+
+    /* copy back set-aside data */
+    APR_BRIGADE_PREPEND(bb, bb_tmp);
 
     rv = apr_brigade_length(bb, 1, &bb_len);
     len = htonl(bb_len + 4);		/* len includes itself */
@@ -1007,11 +1021,6 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
      */
     if ((bb_len > 0) && (r->status == 200))
 	{
-	/*
-	 * make really really sure the data is flushed to the client.
-	 */
-        if (!eos)
-                APR_BRIGADE_INSERT_TAIL(bb,flush);
     	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
     		"epp_tcp_out_filter: Prefix = %ld bytes.", bb_len);
 
@@ -1040,7 +1049,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 /*
  * This input filter always returns EOS.
  *
- * We need this one one GET requests to avoid scripts reading from
+ * We need this one for GET requests to avoid scripts reading from
  * our connection to the client.
  *
  */
