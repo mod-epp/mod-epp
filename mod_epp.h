@@ -92,6 +92,8 @@ module AP_MODULE_DECLARE_DATA epp_module;
 #define EPP_DEFAULT_COMMAND_ROOT "/epp/command"
 #define EPP_DEFAULT_SESSION_ROOT "/epp/session"
 #define EPP_DEFAULT_ERROR_ROOT "/epp/error"
+#define EPP_DEFAULT_AUTH_URI "/epp/auth"
+#define EPP_DEFAULT_RC_HEADER "X-EPP-Returncode"
 
 
 #define EPP_CONTENT_TYPE_CGI "multipart/form-data; boundary=--BOUNDARY--"
@@ -102,7 +104,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 /*
  * the implicit HELLO command during a connection open
  */
-#define EPP_BUILTIN_HELLO "<epp><hello/></epp>"
+#define EPP_BUILTIN_HELLO "<?xml+version=\"1.0\"+encoding=\"UTF-8\"+standalone=\"no\"?><epp+xmlns=\"urn:ietf:params:xml:ns:epp-1.0\"><hello/></epp>"
 
 
 /*
@@ -110,6 +112,10 @@ module AP_MODULE_DECLARE_DATA epp_module;
  */
 #define EPP_BUILTIN_ERROR_HEAD "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><epp xmlns=\"urn:ietf:params:xml:ns:epp-1.0\"  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"  xsi:schemaLocation=\"urn:ietf:params:xml:ns:epp-1.0 epp-1.0.xsd\">" 
 
+/*
+ * Use the following as HTTP User-agent
+ */
+#define EPP_USER_AGENT "mod_epp/1.6 +https://sourceforge.net/projects/aepps/"
 
 /*
  * some return codes
@@ -123,6 +129,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 typedef struct epp_conn_rec {
     int epp_on;				/* is epp enabled on this server */
 
+    int implicit_login;			/* is authentication done with <login> ? */
     char *xml_error_parse;
     char *xml_error_schema;
     char *error_protocol;
@@ -130,6 +137,7 @@ typedef struct epp_conn_rec {
     const char *session_root;
     const char *error_root;
     const char *authuri;
+    const char *rc_header;
 
 } epp_conn_rec;
 
@@ -175,7 +183,25 @@ typedef struct epp_rec {
 
 } epp_rec;
 
+/* Function prototypes */
+
 apr_status_t epp_error_handler(epp_rec *er, char *script, int code, char *cltrid, char *errmsg);
+
+void epp_make_cookie(epp_user_rec *ur);
+char *get_attr(apr_xml_attr *attr, const char *name);
+apr_xml_elem *get_elem(apr_xml_elem *elem, const char *name);
+void xml_firstcdata_strncat(char *dest, size_t dstsize, apr_xml_elem *elem);
+apr_status_t epp_get_cltrid(epp_rec *er);
+apr_status_t epp_login(epp_rec *er, apr_xml_elem *login);
+apr_status_t epp_logout(epp_rec *er, apr_xml_elem *login);
+void epp_process_frame(epp_rec *er);
+apr_status_t epp_do_hello(epp_rec *er);
+apr_status_t epp_read(conn_rec *c, apr_pool_t *p, char *buf, apr_size_t count);
+apr_status_t epp_translate_xml_to_uri(apr_xml_doc *doc, epp_rec *er,
+                char *path, apr_size_t path_size, apr_xml_elem **element, int *login_needed);
+
+int epp_dump_table_entry(void *rec, const char *key, const char *value);
+void epp_dump_table(apr_table_t *t, const char *s);
 
 
 #ifdef __cplusplus
@@ -183,3 +209,4 @@ apr_status_t epp_error_handler(epp_rec *er, char *script, int code, char *cltrid
 #endif
 
 #endif	/* EPP_H */
+

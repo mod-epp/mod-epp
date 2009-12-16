@@ -117,4 +117,6 @@ somewhat organised and focused.
 * check error handling on incomplete installs.
 	looks better now.
 * check authentication passing when running mod_epp as reverse proxy.
+	Done.
 * check if Connection: close works through mod_proxy
+	Done.

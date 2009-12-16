@@ -11,6 +11,7 @@ use Socket;
 use strict;
 use Getopt::Long;
 
+$| = 1;  # no buffering, please
 
 my ($opt_d, $opt_2);
 

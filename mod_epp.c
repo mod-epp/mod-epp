@@ -78,6 +78,25 @@
 
 module AP_MODULE_DECLARE_DATA epp_module;
 
+
+/*
+ * table debugging helpers
+ */
+
+int epp_dump_table_entry(void *rec, const char *key, const char *value) {
+
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		(char *)rec, key, value);
+	return(1);
+}
+
+void epp_dump_table(apr_table_t *t, const char *s) {
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"%s: Dumping table %lx", s, (long) t);
+	apr_table_do(&epp_dump_table_entry,(void *) "DUMP: %s: %s\n", t);
+}
+
+
 /*
  * Generate the session identifying cookie
  *
@@ -197,6 +216,8 @@ r->status = HTTP_OK;                         /* Until further notice. */
 r->request_time	   = apr_time_now();
 
 ap_set_module_config(r->request_config, &epp_module, ur);
+
+apr_table_set(r->headers_in, "User-Agent", EPP_USER_AGENT);
 
 return r;
 }
@@ -411,6 +432,7 @@ if (r->status != HTTP_OK)	/* something wrong with the script runtime? Go for sim
 			EPP_BUILTIN_ERROR_HEAD,
 			code, e, id_xml);
 	ap_fputs(er->ur->c->output_filters, er->bb_out, req);
+    	APR_BRIGADE_INSERT_TAIL(er->bb_out, apr_bucket_eos_create(r->connection->bucket_alloc));
 	ap_fflush(er->ur->c->output_filters, er->bb_out);
 	}
 apr_pool_destroy(r->pool);
@@ -429,6 +451,7 @@ apr_status_t epp_login(epp_rec *er, apr_xml_elem *login)
 {
 apr_xml_elem *clid_el, *pw_el;
 
+epp_conn_rec *conf = er->ur->conf;
 char clid[CLIDSIZE];
 char pw[PWSIZE];
 char *passwd;
@@ -468,6 +491,16 @@ ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
 passwd = apr_psprintf(er->pool, "%s:%s", clid, pw);
 er->ur->auth_string = apr_psprintf(er->ur->pool, "Basic %s", ap_pbase64encode(er->ur->pool, passwd));
 
+if (conf->implicit_login)      /* implicit login, no need to do a request here */
+	{
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
+		"epp_login: implicit_login set, no request done");
+
+	apr_cpystrn(er->ur->clid, clid, sizeof(er->ur->clid));
+	apr_cpystrn(er->ur->pw, pw, sizeof(er->ur->pw));
+	return(APR_SUCCESS);
+	}
+
 r = epp_create_request(er->ur);
 er->r = r;
 apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
@@ -475,7 +508,7 @@ apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 
 r->the_request	= (char *) er->ur->conf->authuri;
 r->uri 		= (char *) er->ur->conf->authuri;
-r->assbackwards    = 0;         /* I don't want headers. */
+r->assbackwards    = 0;         /* I don't want headers. */ 
 r->method          = "GET";
 r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
@@ -533,14 +566,17 @@ return(APR_SUCCESS);
  */
 void epp_process_frame(epp_rec *er)
 {
+epp_conn_rec *conf = er->ur->conf;
 apr_xml_parser *xml_p;
 apr_xml_doc *doc;
 apr_xml_elem *tag = NULL;
 int login_needed;
+int is_login = 0;
 apr_status_t rv;
 char errstr[300];
 request_rec *r;
 const char *connection;
+const char *epp_rc;
 
 char uri[200];
 char content_length[20];
@@ -586,15 +622,12 @@ ap_log_error(APLOG_MARK, ((rv == APR_SUCCESS) ? APLOG_DEBUG : APLOG_WARNING),
  * If translation failed, we already have the error URI here, thus we continue.
  */
 
-if (tag && !strcmp("login",tag->name))
+if (tag && !strcmp("login",tag->name))	 /* <login> ? */
 	{
+	is_login = 1;
 	rv = epp_login(er, tag);
 	if (rv != APR_SUCCESS)
 		{
-	/*
-	 * error message generation moved into epp_login.
-		epp_error_handler(er, "login", 2200, er->cltrid, "Username/Password invalid.");
-	 */
 		return;
 		}
 	}
@@ -651,9 +684,9 @@ r->uri		   = uri;
 r->the_request     = uri;       /* make sure the logging is correct */
 
 /*
- * Fake Basic Auth.
+ * Fake Basic Auth if authenticated or the backend does user/pass checking.
  */
-if (er->ur->authenticated)
+if (er->ur->authenticated || conf->implicit_login )
 	{
 	apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
 	/*
@@ -672,23 +705,100 @@ if (ap_extended_status)
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 	"request status = %d", r->status);
 
+/* debugging stub */
+#if 0
+epp_dump_table(r->headers_in,"headers_in, after call");
+epp_dump_table(r->headers_out,"headers_out, after call");
+epp_dump_table(r->err_headers_out,"err_headers_out, after call");
+#endif
+
 /*
- * did it work?
+ * Check for the EPP Return Code header
  */
-if (r->status != HTTP_OK)
+epp_rc = apr_table_get(r->err_headers_out, conf->rc_header);
+if (!epp_rc) 
+	epp_rc = apr_table_get(r->headers_out, conf->rc_header);
+
+/*
+ * was this a <login>?
+ */
+if (is_login && conf->implicit_login)	/* did we try to login with this request */
+	{
+/* 
+ * The logic here is a bit tricky: if we get a http 401, login failed.
+ * If HTTP_OK, then check for a epp return-code header and analyze it.
+ * If no header is found, treat the login as succeeded.
+ */
+	if (r->status == HTTP_UNAUTHORIZED)
+		{
+		ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, NULL,
+			"epp login failed for %s, error code is %d", er->ur->clid, r->status);
+		er->ur->authenticated = 0;
+		}
+	else if (r->status == HTTP_OK) 
+		{
+		if (epp_rc) 
+		    {
+		    if (epp_rc[0] == '1')	/* 1xxx is success */
+			{
+			ap_log_error(APLOG_MARK, APLOG_INFO, APR_SUCCESS, NULL,
+				"epp login for %s succeeded based on EPP code %s", er->ur->clid, epp_rc);
+			er->ur->authenticated = 1;
+			}
+		    else 
+			{
+			ap_log_error(APLOG_MARK, APLOG_INFO, APR_SUCCESS, NULL,
+				"epp login for %s failed based on EPP code %s", er->ur->clid, epp_rc);
+			er->ur->authenticated = 0;
+			}
+		    }
+		else 
+		   {
+		   ap_log_error(APLOG_MARK, APLOG_INFO, APR_SUCCESS, NULL,
+			"epp login succeeded for %s based on HTTP code %d", er->ur->clid, r->status);
+			er->ur->authenticated = 1;
+		   }
+		}
+	}
+
+/*
+ * Troubles executing the request
+ */
+if ((r->status != HTTP_OK) && (r->status != HTTP_UNAUTHORIZED))
 	{
 	ap_log_error(APLOG_MARK, APLOG_ERR, APR_SUCCESS, NULL,
 		"Could not execute %s", uri);
 	epp_error_handler(er, "internal", 2400, NULL, "Internal error.");
 	}
 
+/*
+ * Scripts can signal with "Connection: close" that they want to tear down
+ * the epp session.
+ *
+ * This does not work if mod_proxy is used. In this case, the remote
+ * script should set "X-Connection: close". For added confusion, in 
+ * this case, the header appears in headers_out and not err_headers_out.
+ * 
+ */
 connection = apr_table_get(r->err_headers_out, "Connection");
+if (!connection) 
+	connection = apr_table_get(r->headers_out, "X-Connection");
 
+/*
+ * Alternatively, if they send the EPP return code in a header, use that.
+ */
 if (connection && !strncmp(connection, "close", 5))
 	{
 	er->ur->connection_close = 1;
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"CGI requested a connection close");
+		"CGI requested a connection close via Connection-header");
+	}
+
+if (epp_rc && (epp_rc[1] == '5'))	/* x5yy means connection close */
+	{
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"Connection close based on EPP code %s", epp_rc);
+	er->ur->connection_close = 1;
 	}
 
 apr_pool_destroy(r->pool);
@@ -959,30 +1069,26 @@ static int epp_process_connection(conn_rec *c)
     return OK;
 }
 
-
 /*
  * This filter prefixes each message with the epp/tcp header.
  */
 static apr_status_t epp_tcp_out_filter(ap_filter_t * f, 
                                            apr_bucket_brigade * bb)
 {
+    epp_conn_rec *conf;
     apr_bucket *header, *flush, *bucket;
     apr_bucket_brigade *bb_tmp;
     apr_status_t rv = APR_SUCCESS;
     unsigned long len;
     apr_off_t bb_len;
+    epp_user_rec *ur;
     request_rec *r;
     int found_eos = 0;
     
-    epp_user_rec *ur = f->ctx;
+    ur = f->ctx;
     r = ur->er->r;
+    conf = ur->conf;
     bb_tmp = ur->er->bb_tmp;
-
-/*
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS , NULL,
-    	"epp_tcp_out_filter: entering. %ld", ur->er->orig_xml_size );
-*/
-
 
     /*
      * make sure the data is flushed to the client.
@@ -1006,7 +1112,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
        APR_BRIGADE_CONCAT(bb_tmp, bb);
        rv = apr_brigade_length(bb_tmp, 1, &bb_len);
        ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-                       "epp_tcp_out_filter: No EOS bucket. length of bb_tmp is now %d.", bb_len);
+                       "epp_tcp_out_filter: No EOS bucket. length of bb_tmp is now %lld.", bb_len);
        return APR_SUCCESS;
     }
 
@@ -1017,12 +1123,14 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     len = htonl(bb_len + 4);		/* len includes itself */
 
     /*
-     * prefix only if we have data and no error message.
+     * prefix only if we have data and HTTP_Ok.
+     * except: implicit_login is set and we get HTTP_UNAUTHORIZED
      */
-    if ((bb_len > 0) && (r->status == 200))
+    if ((bb_len > 0) && ((r->status == HTTP_OK) || 
+		((r->status == HTTP_UNAUTHORIZED) && conf->implicit_login)))
 	{
     	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-    		"epp_tcp_out_filter: Prefix = %ld bytes.", bb_len);
+    		"epp_tcp_out_filter: Prefix = %lld bytes.", bb_len);
 
 	r->bytes_sent += bb_len; 
 	header = apr_bucket_transient_create((char *) &len, 4,  f->c->bucket_alloc);
@@ -1036,7 +1144,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	 * apr_brigade_length did that for us.
 	 */
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-    		"epp_tcp_out_filter: skipping data (%ld bytes), status = %d.", bb_len, r->status);
+    		"epp_tcp_out_filter: skipping data (%lld bytes), status = %d.", bb_len, r->status);
 
         apr_brigade_cleanup(bb);
 	}
@@ -1146,9 +1254,12 @@ static void *epp_create_server(apr_pool_t *p, server_rec *s)
     epp_conn_rec *conf = (epp_conn_rec *)apr_pcalloc(p, sizeof(*conf));
 
     conf->epp_on 		= 0;
+    conf->implicit_login	= 0;
     conf->command_root 		= EPP_DEFAULT_COMMAND_ROOT;
     conf->session_root 		= EPP_DEFAULT_SESSION_ROOT;
     conf->error_root 		= EPP_DEFAULT_ERROR_ROOT;
+    conf->authuri 		= EPP_DEFAULT_AUTH_URI;
+    conf->rc_header 		= EPP_DEFAULT_RC_HEADER;
     return conf;
 }
 
@@ -1216,14 +1327,34 @@ static const char *set_epp_authuri(cmd_parms *cmd, void *dummy, const char *arg)
     server_rec *s = cmd->server;
     epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
                                                               &epp_module);
+
     const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
     if (err) {
         return err;
     }
-    conf->authuri = apr_pstrdup(cmd->pool, arg);
+
+    if (!strcmp(arg, "implicit")) {	/* authentication is done by <login> itself */
+	conf->implicit_login = 1;
+    } else {
+	conf->authuri = apr_pstrdup(cmd->pool, arg);
+	conf->implicit_login = 0;
+    }
     return NULL;
 }
 
+
+static const char *set_epp_rc_header(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    server_rec *s = cmd->server;
+    epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
+                                                              &epp_module);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
+    if (err) {
+        return err;
+    }
+    conf->rc_header = apr_pstrdup(cmd->pool, arg);
+    return NULL;
+}
 
 static const command_rec epp_cmds[] = {
     AP_INIT_FLAG("EPPEngine", set_epp_protocol, NULL, RSRC_CONF,
@@ -1236,6 +1367,8 @@ static const command_rec epp_cmds[] = {
 		                      "Baseline URI for EPP error handling."),
     AP_INIT_TAKE1("EPPAuthURI",set_epp_authuri , NULL, RSRC_CONF,
 		                      "URI for authentication requests."),
+    AP_INIT_TAKE1("EPPReturncodeHeader",set_epp_rc_header , NULL, RSRC_CONF,
+		                      "Which header contains the EPP returncode"),
     { NULL }
 };
 

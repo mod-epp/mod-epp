@@ -1,0 +1,22 @@
+
+
+1.6: (December 2009)
+
+* Bugfix: Internal EPP error messages work again
+* Default value for EPPAuthURI
+* New config statement: EPPReturncodeHeader
+	- Backend can signal EPP RC to mod_epp
+* New feature: implicit login
+	- EPPAuthURI = implicit
+	- no special request to authenticate
+	- uses either HTTP error code or via EPPReturncodeHeader
+	  of the <login> command.
+* New feature: User-Agent: header set
+* Bufix/Feature: Connection close now works on mod_proxy
+	- X-Connection
+	- via EPP return code
+
+* A mod_proxy setup is now fully supported. See README.
+
+Version 1.6 was paid for by SIDN.
+

@@ -12,6 +12,10 @@ in RFC3734 and the session management parts of RFC3730.
 This is *not* a full implementation of EPP, this module just makes it
 possible to write an EPP server as a set of CGI scripts.
 
+The homepage of this software is https://sourceforge.net/projects/aepps/
+where you can find the latest version. This is version 1.6, release 
+December 2009.
+
 
 RATIONALE
 ---------
@@ -86,9 +90,8 @@ There has been a change in the Apache internal filter API recently;
 this module was developed for 2.0.43. Version 2.0.39 is definitely
 too old.
 
-For this version of mod_epp, I've tested the module with Apache 2.0.49,
-and did not detect any errors any more. If you run with older version,
-please have a look at:
+I've tested the module with Apache 2.0.49, and did not detect any errors
+any more. If you run with older version, please have a look at:
 
  If you turn on StdEnvVars, you might run into a core dump. Please have
  a look at http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057 for a
@@ -99,7 +102,8 @@ please have a look at:
  information including a patch.
 
 Success has been reported with Apache 2.0.55. As of version 1.4,
-mod_epp also works with Apache 2.2. 
+mod_epp also works with Apache 2.2. Version 1.6 was developed on 
+Apache 2.2.14.
 
 (There is one issue, though: Some optimizations within Apache 2.2
 don't start the connection handler until the first bytes are received
@@ -175,8 +179,16 @@ EPPErrorRoot is the base path for all error handler calls. These
 		authrequired	Authentication required, but not supplied.
 		internal	mod_epp internal error.
 
-EPPAuthURI is accessed during the EPP <login> command. You should protect
-	that URI with whatever access control mechanism you want
+EPPAuthURI defines the strategy mod_epp uses to authenticate users.
+
+	There are two different approaches:
+
+   (1)  EPPAuthURI defines a Path which accessed during the EPP <login> 
+	command. No document is actually retrieved from this location, mod_epp
+	just checks if the username/password pair would suffice to access that
+	location.
+
+	You should protect that URI with whatever access control mechanism you want
 	to apply to the whole setup.
 
 	All further requests in this EPP session will inherit this
@@ -204,6 +216,27 @@ EPPAuthURI is accessed during the EPP <login> command. You should protect
 
 	In such a setup you have to make sure that the EPP command
 	scripts are *not* callable via a normal HTTP port.
+
+	This use of EPPAuthURI does not work with mod_proxy to a remote
+	http server.
+
+   (2)  If EPPAuthURI is set to "implicit", then no special access
+	test will be made. Instead, the return code of the actual
+	<login> Apache request will be checked. 
+
+	This works with mod_proxy.
+
+EPPReturncodeHeader defines a Header with which the CGI/HTTP backend can
+	communicate the EPP return code to mod_epp.
+
+	mod_epp will use this header for:
+
+	* If implicit authentication is active, a 1xxx return code
+	  on <login> counts as successful login, anything else as login failed.
+
+	* If the second digit of the return-code is '5' (x5yy), then 
+	  mod_epp will close the connection to the client.
+
 
 Older versions of mod_epp included a EPPVersion command to select
 between draft versions of EPP. Now that the RFCs have been published,
@@ -277,6 +310,8 @@ to the client.
 If the script wants to tear down the connection to the client,
 it has to include "Connection: close" in the header of the
 answer. This convention was selected in analogy to HTTP 1.1.
+As the Connection header is a hop-by-hop header and doesn't get
+passed over a HTTP proxy, "X-Connection: close" works, too.
 
 mod_epp generates a random string for each EPP connection and passes 
 this to the backend as a Cookie with the name "session".
@@ -373,8 +408,44 @@ to a different server:
 	</VirtualHost>
 
 Authentication information will be passed using an
-"Authorization: Basic" header. The connection close mechanism does not
-seem to work in this setup. I'm investigating an alternative.
+"Authorization: Basic" header. 
+
+Version 1.6 was written to better support this setup. 
+
+In order to have the remote backend handle the authentication as well,
+use e.g.
+
+	EPPAuthURI              implicit
+	EPPReturncodeHeader     X-EPP-Returncode
+
+and on the remote side use the aequivalent of
+
+	<Location /epp/session/login>
+	   Auth ...
+	</Location>
+
+In this case, the remote Apache will do the password checking. You need to
+provide a suitable Error-document, as the default HTML on is not legal EPP.
+
+Alternatively, don't use the webserver itself to check the password, and return
+always HTTP 200, but add a X-EPP-Returncode header. e.g.
+
+Content-Type: text/xml
+X-EPP-Returncode: 2200
+
+mod_epp will use the first digit to determine whether <login> was successful or not.
+
+The basic connection close mechanism does not work in this setup. You can either send
+a X-Connection: close, or a EPP Return Code header with the second digit set to '5'
+to close the connection.
+
+DEBUGGING HINTS
+---------------
+
+The code is liberally sprinkled with debugging output. In order to look what
+mod_epp is doing, run apache like this:
+
+httpd -e debug -X
 
 AUTHOR
 ------
@@ -382,7 +453,7 @@ AUTHOR
 This module was developed by Otmar Lendl under contract
 from NIC.at. You can reach the author at lendl@nic.at.
 
-
+Version 1.6 was sponsored by SIDN.
 
 LICENCE
 -------
