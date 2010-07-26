@@ -996,6 +996,8 @@ static int epp_process_connection(conn_rec *c)
 	er->ur = ur;
 	ur->er = er;
 	er->bb_out = bb_out;
+    	er->bb_tmp = bb_tmp;
+
 /*
  * read the header.
  */

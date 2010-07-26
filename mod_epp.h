@@ -115,7 +115,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 /*
  * Use the following as HTTP User-agent
  */
-#define EPP_USER_AGENT "mod_epp/1.6 +https://sourceforge.net/projects/aepps/"
+#define EPP_USER_AGENT "mod_epp/1.7 +https://sourceforge.net/projects/aepps/"
 
 /*
  * some return codes

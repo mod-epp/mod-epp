@@ -1,4 +1,9 @@
 
+1.7: (July 2010)
+
+* Bugfix: Cope with longer messages
+
+The debugging for version 1.7 was sponsored by CentralNic.
 
 1.6: (December 2009)
 
