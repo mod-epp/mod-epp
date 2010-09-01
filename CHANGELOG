@@ -1,7 +1,13 @@
 
-1.7: (July 2010)
+1.7: (September 2010)
 
-* Bugfix: Cope with longer messages
+* Bugfixes: 
+	- Cope with longer messages on imput (missed initialization)
+	- Make output filter work independent of request object
+	- Make Connection: close work for error-handlers
+
+* New Feature:
+	- Original EPP frame can be passed to backend
 
 The debugging for version 1.7 was sponsored by CentralNic.
 

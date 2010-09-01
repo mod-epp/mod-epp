@@ -93,7 +93,7 @@ int epp_dump_table_entry(void *rec, const char *key, const char *value) {
 void epp_dump_table(apr_table_t *t, const char *s) {
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 		"%s: Dumping table %lx", s, (long) t);
-	apr_table_do(&epp_dump_table_entry,(void *) "DUMP: %s: %s\n", t);
+	apr_table_do(&epp_dump_table_entry,(void *) "DUMP: %s: %s\n", t, NULL);
 }
 
 
@@ -367,6 +367,56 @@ while (c != NULL)
 return(APR_BADARG);
 }
 
+/*
+ * Check for connection close signalling
+ *
+ */
+void handle_close_request(epp_rec *er, request_rec *r)
+{
+const char *epp_rc;
+const char *connection;
+epp_conn_rec *conf = er->ur->conf;
+
+/*
+ * Check for the EPP Return Code header
+ */
+epp_rc = apr_table_get(r->err_headers_out, conf->rc_header);
+if (!epp_rc) 
+	epp_rc = apr_table_get(r->headers_out, conf->rc_header);
+
+/*
+ * Scripts can signal with "Connection: close" that they want to tear down
+ * the epp session.
+ *
+ * This does not work if mod_proxy is used. In this case, the remote
+ * script should set "X-Connection: close". For added confusion, in 
+ * this case, the header appears in headers_out and not err_headers_out.
+ * 
+ */
+connection = apr_table_get(r->err_headers_out, "Connection");
+if (!connection) 
+	connection = apr_table_get(r->headers_out, "X-Connection");
+
+/*
+ * Alternatively, if they send the EPP return code in a header, use that.
+ */
+if (connection && !strncmp(connection, "close", 5))
+	{
+	er->ur->connection_close = 1;
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"CGI requested a connection close via Connection-header");
+	return;
+	}
+
+if (epp_rc && (epp_rc[1] == '5'))	/* x5yy means connection close */
+	{
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
+		"Connection close based on EPP code %s", epp_rc);
+	er->ur->connection_close = 1;
+	}
+}
+
+
 
 /*
  * Call an error handler.
@@ -435,6 +485,11 @@ if (r->status != HTTP_OK)	/* something wrong with the script runtime? Go for sim
     	APR_BRIGADE_INSERT_TAIL(er->bb_out, apr_bucket_eos_create(r->connection->bucket_alloc));
 	ap_fflush(er->ur->c->output_filters, er->bb_out);
 	}
+
+/*
+ * Did the error handle request the connection to be closed?
+ */
+handle_close_request(er, r);
 apr_pool_destroy(r->pool);
 return(APR_SUCCESS);
 }
@@ -554,8 +609,6 @@ er->ur->pw[0] 		= 0;
 er->ur->auth_string[0]	= 0;
 return(APR_SUCCESS);
 }
-
-
 /*
  * This is the core function. 
  *
@@ -575,7 +628,6 @@ int is_login = 0;
 apr_status_t rv;
 char errstr[300];
 request_rec *r;
-const char *connection;
 const char *epp_rc;
 
 char uri[200];
@@ -668,8 +720,11 @@ sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI)
 			+ strlen(EPP_CONTENT_CLTRID_CGI) 
 			+ strlen(er->cltrid) 
 			+ strlen(EPP_CONTENT_POSTFIX_CGI)
-			+ er->serialised_xml_size);
-
+			+ er->serialised_xml_size
+			+ ((conf->raw_frame) ? (
+				strlen(conf->raw_frame)
+				+ er->orig_xml_size) : 0));
+	
 apr_table_set(r->headers_in, "Content-Type", "multipart/form-data; boundary=--BOUNDARY--");
 apr_table_set(r->headers_in, "Content-Length", content_length);
 apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
@@ -772,34 +827,9 @@ if ((r->status != HTTP_OK) && (r->status != HTTP_UNAUTHORIZED))
 	}
 
 /*
- * Scripts can signal with "Connection: close" that they want to tear down
- * the epp session.
- *
- * This does not work if mod_proxy is used. In this case, the remote
- * script should set "X-Connection: close". For added confusion, in 
- * this case, the header appears in headers_out and not err_headers_out.
- * 
+ * Did the backend request the connection to be closed?
  */
-connection = apr_table_get(r->err_headers_out, "Connection");
-if (!connection) 
-	connection = apr_table_get(r->headers_out, "X-Connection");
-
-/*
- * Alternatively, if they send the EPP return code in a header, use that.
- */
-if (connection && !strncmp(connection, "close", 5))
-	{
-	er->ur->connection_close = 1;
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"CGI requested a connection close via Connection-header");
-	}
-
-if (epp_rc && (epp_rc[1] == '5'))	/* x5yy means connection close */
-	{
-	ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-		"Connection close based on EPP code %s", epp_rc);
-	er->ur->connection_close = 1;
-	}
+handle_close_request(er, r);
 
 apr_pool_destroy(r->pool);
 }
@@ -965,6 +995,7 @@ static int epp_process_connection(conn_rec *c)
     er->pool = p_er;
     er->ur = ur;
     ur->er = er;
+    er->r = NULL;	/* so that the output filter knows there is no request yet */
     er->bb_out = bb_out;
     er->bb_tmp = bb_tmp;
     rv = epp_do_hello(er);
@@ -995,9 +1026,9 @@ static int epp_process_connection(conn_rec *c)
 	er->pool = p_er;
 	er->ur = ur;
 	ur->er = er;
+	er->r = NULL;	/* so that the output filter knows there is no request yet */
 	er->bb_out = bb_out;
-    	er->bb_tmp = bb_tmp;
-
+	er->bb_tmp = bb_tmp;
 /*
  * read the header.
  */
@@ -1091,6 +1122,16 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     r = ur->er->r;
     conf = ur->conf;
     bb_tmp = ur->er->bb_tmp;
+
+    /* 
+     * No request? don't prefix
+     */
+    if (!r) {
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+   		"epp_tcp_out_filter: No request object -> passthrough.");
+    	return ap_pass_brigade(f->next, bb);
+    }
+
 
     /*
      * make sure the data is flushed to the client.
@@ -1207,13 +1248,14 @@ static apr_status_t epp_xmlstdin_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 
 /*
  * This input filter writes the xml tree from the context as CGI parameter, 
- * the clTRID, then EOS.
+ * the raw EPP input (if requested), the clTRID, then EOS.
  *
  */
 static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 		 ap_input_mode_t mode, apr_read_type_e block, apr_off_t readbytes)
 {
     epp_rec *er = f->ctx;
+    epp_conn_rec *conf = er->ur->conf;
 
     if (er->serialised_xml_size > 0)
     	{
@@ -1221,6 +1263,12 @@ static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 				strlen(EPP_CONTENT_FRAME_CGI), f->r->connection->bucket_alloc));
         APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->serialised_xml,er->serialised_xml_size,
 		f->r->pool,f->r->connection->bucket_alloc));
+	if (conf->raw_frame) {
+		APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(conf->raw_frame, 
+				strlen(conf->raw_frame), f->r->connection->bucket_alloc));
+        	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->orig_xml,er->orig_xml_size,
+				f->r->pool,f->r->connection->bucket_alloc));
+	}
 	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_CLTRID_CGI, 
 				strlen(EPP_CONTENT_CLTRID_CGI), f->r->connection->bucket_alloc));
         APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->cltrid,strlen(er->cltrid),
@@ -1262,6 +1310,7 @@ static void *epp_create_server(apr_pool_t *p, server_rec *s)
     conf->error_root 		= EPP_DEFAULT_ERROR_ROOT;
     conf->authuri 		= EPP_DEFAULT_AUTH_URI;
     conf->rc_header 		= EPP_DEFAULT_RC_HEADER;
+    conf->raw_frame 		= NULL;
     return conf;
 }
 
@@ -1358,6 +1407,20 @@ static const char *set_epp_rc_header(cmd_parms *cmd, void *dummy, const char *ar
     return NULL;
 }
 
+
+static const char *set_epp_raw_frame(cmd_parms *cmd, void *dummy, const char *arg)
+{
+    server_rec *s = cmd->server;
+    epp_conn_rec *conf = (epp_conn_rec *)ap_get_module_config(s->module_config,
+                                                              &epp_module);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
+    if (err) {
+        return err;
+    }
+    conf->raw_frame = apr_psprintf(cmd->pool, EPP_CONTENT_RAW_CGI, arg);
+    return NULL;
+}
+
 static const command_rec epp_cmds[] = {
     AP_INIT_FLAG("EPPEngine", set_epp_protocol, NULL, RSRC_CONF,
                  "Whether this server is using EPP"),
@@ -1371,6 +1434,8 @@ static const command_rec epp_cmds[] = {
 		                      "URI for authentication requests."),
     AP_INIT_TAKE1("EPPReturncodeHeader",set_epp_rc_header , NULL, RSRC_CONF,
 		                      "Which header contains the EPP returncode"),
+    AP_INIT_TAKE1("EPPRawFrame",set_epp_raw_frame , NULL, RSRC_CONF,
+		                      "Pass the original EPP frame as which CGI parameter?"),
     { NULL }
 };
 

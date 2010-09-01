@@ -13,8 +13,8 @@ This is *not* a full implementation of EPP, this module just makes it
 possible to write an EPP server as a set of CGI scripts.
 
 The homepage of this software is https://sourceforge.net/projects/aepps/
-where you can find the latest version. This is version 1.6, release 
-December 2009.
+where you can find the latest version. This is version 1.7, released 
+in September 2010.
 
 
 RATIONALE
@@ -91,7 +91,7 @@ this module was developed for 2.0.43. Version 2.0.39 is definitely
 too old.
 
 I've tested the module with Apache 2.0.49, and did not detect any errors
-any more. If you run with older version, please have a look at:
+any more. If you use an older version, please have a look at:
 
  If you turn on StdEnvVars, you might run into a core dump. Please have
  a look at http://nagoya.apache.org/bugzilla/show_bug.cgi?id=15057 for a
@@ -102,8 +102,8 @@ any more. If you run with older version, please have a look at:
  information including a patch.
 
 Success has been reported with Apache 2.0.55. As of version 1.4,
-mod_epp also works with Apache 2.2. Version 1.6 was developed on 
-Apache 2.2.14.
+mod_epp also works with Apache 2.2. Version 1.7 was developed using 
+Apache 2.2.15.
 
 (There is one issue, though: Some optimizations within Apache 2.2
 don't start the connection handler until the first bytes are received
@@ -237,6 +237,8 @@ EPPReturncodeHeader defines a Header with which the CGI/HTTP backend can
 	* If the second digit of the return-code is '5' (x5yy), then 
 	  mod_epp will close the connection to the client.
 
+EPPRawFrame can be used to name a CGI parameter which will contain the
+	original EPP message.
 
 Older versions of mod_epp included a EPPVersion command to select
 between draft versions of EPP. Now that the RFCs have been published,
@@ -346,6 +348,8 @@ Command Interface:
 		it still can formulate an error reply tagged
 		with the correct clTRID.
 
+	The EPPRawFrame parameter can be used to expose the original EPP
+	message to the backend.
 	
 	Session commands use the same interface.
 

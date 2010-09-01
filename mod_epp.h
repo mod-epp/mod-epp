@@ -98,6 +98,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 
 #define EPP_CONTENT_TYPE_CGI "multipart/form-data; boundary=--BOUNDARY--"
 #define EPP_CONTENT_FRAME_CGI "----BOUNDARY--\r\nContent-Disposition: form-data; name=\"frame\"\r\n\r\n"
+#define EPP_CONTENT_RAW_CGI "\r\n----BOUNDARY--\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n"
 #define EPP_CONTENT_CLTRID_CGI "\r\n----BOUNDARY--\r\nContent-Disposition: form-data; name=\"clTRID\"\r\n\r\n"
 #define EPP_CONTENT_POSTFIX_CGI "\r\n----BOUNDARY--\r\n"
 
@@ -116,6 +117,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
  * Use the following as HTTP User-agent
  */
 #define EPP_USER_AGENT "mod_epp/1.7 +https://sourceforge.net/projects/aepps/"
+
 
 /*
  * some return codes
@@ -138,6 +140,7 @@ typedef struct epp_conn_rec {
     const char *error_root;
     const char *authuri;
     const char *rc_header;
+    const char *raw_frame;
 
 } epp_conn_rec;
 
@@ -202,6 +205,7 @@ apr_status_t epp_translate_xml_to_uri(apr_xml_doc *doc, epp_rec *er,
 
 int epp_dump_table_entry(void *rec, const char *key, const char *value);
 void epp_dump_table(apr_table_t *t, const char *s);
+void handle_close_request(epp_rec *er, request_rec *r);
 
 
 #ifdef __cplusplus
