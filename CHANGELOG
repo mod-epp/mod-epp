@@ -1,4 +1,16 @@
 
+1.8: (April 2011)
+
+* Bugfix:
+	- Handle TRANSIENT buckets correctly when collecting a long
+	  answer from the backend.
+
+* New features:
+	- new program async-epptelnet.pl: Same as epptelnet.pl,
+	  minus SSL and other frills, but can do async operations.
+
+The debugging for version 1.8 was sponsored by SIDN.
+
 1.7: (September 2010)
 
 * Bugfixes: 

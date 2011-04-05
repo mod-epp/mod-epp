@@ -1136,27 +1136,47 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
     /*
      * make sure the data is flushed to the client.
      */
-    flush = apr_bucket_flush_create(f->c->bucket_alloc); 
     for (bucket = APR_BRIGADE_FIRST(bb);
 	bucket != APR_BRIGADE_SENTINEL(bb);
 	bucket = APR_BUCKET_NEXT(bucket)) {
+
+       ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+                       "epp_tcp_out_filter: loop: found bucket of type %s.", bucket->type->name);
+
 
 	if (APR_BUCKET_IS_EOS(bucket)) {
 	        found_eos = 1;
     		ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
     			"epp_tcp_out_filter: Found an EOS bucket. Adding a FLUSH before it.");
+    		flush = apr_bucket_flush_create(f->c->bucket_alloc); 
 		APR_BUCKET_INSERT_BEFORE(bucket, flush);
 		break;
 	}
     }
 
-    /* there could be more data coming (perhaps from a mod_proxy setup). Set the data aside */
+    /* 
+     * there could be more data coming (perhaps from a mod_proxy setup). Set the data aside 
+     */
     if (!found_eos) {
-       APR_BRIGADE_CONCAT(bb_tmp, bb);
-       rv = apr_brigade_length(bb_tmp, 1, &bb_len);
-       ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+    	for (bucket = APR_BRIGADE_FIRST(bb);
+		bucket != APR_BRIGADE_SENTINEL(bb);
+		bucket = APR_BUCKET_NEXT(bucket)) {
+     /*
+      * TRANSIENTS are in danger of having their memory re-used ...
+      */
+		if (APR_BUCKET_IS_TRANSIENT(bucket)) {
+			apr_bucket_setaside(bucket, ur->er->pool);	
+       			ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
+	       	                "epp_tcp_out_filter: found transient, setting aside.");
+		}
+	}
+	
+	APR_BRIGADE_CONCAT(bb_tmp, bb);
+
+	rv = apr_brigade_length(bb_tmp, 1, &bb_len);
+	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
                        "epp_tcp_out_filter: No EOS bucket. length of bb_tmp is now %lld.", bb_len);
-       return APR_SUCCESS;
+	return APR_SUCCESS;
     }
 
     /* copy back set-aside data */

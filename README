@@ -13,8 +13,8 @@ This is *not* a full implementation of EPP, this module just makes it
 possible to write an EPP server as a set of CGI scripts.
 
 The homepage of this software is https://sourceforge.net/projects/aepps/
-where you can find the latest version. This is version 1.7, released 
-in September 2010.
+where you can find the latest version. This is version 1.8, released 
+in April 2011.
 
 
 RATIONALE
@@ -107,7 +107,7 @@ Apache 2.2.15.
 
 (There is one issue, though: Some optimizations within Apache 2.2
 don't start the connection handler until the first bytes are received
-from the client. That's fine with HTTP, but not EPP. See below.)
+from the client. That's fine for HTTP, but not EPP. See below.)
 
 CONFIGURATION
 -------------
@@ -446,10 +446,14 @@ to close the connection.
 DEBUGGING HINTS
 ---------------
 
-The code is liberally sprinkled with debugging output. In order to look what
+The code is liberally sprinkled with debugging output. In order to see what
 mod_epp is doing, run apache like this:
 
 httpd -e debug -X
+
+When using gdb, make sure that you use the .gdbinit file that comes with the
+apache 2.x source code. The "dump_bucket" and "dump_brigade" macros defined in
+there are *really* helpful.
 
 AUTHOR
 ------
@@ -459,6 +463,7 @@ from NIC.at. You can reach the author at lendl@nic.at.
 
 Version 1.6 was sponsored by SIDN.
 Version 1.7 was sponsored by CentralNic.
+Version 1.8 was sponsored by SIDN.
 
 LICENCE
 -------
