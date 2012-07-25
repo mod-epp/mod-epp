@@ -562,11 +562,12 @@ apr_table_set(r->headers_in, "Authorization", er->ur->auth_string);
 apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 
 r->the_request	= (char *) er->ur->conf->authuri;
-r->uri 		= (char *) er->ur->conf->authuri;
+ap_parse_uri(r, (char *) er->ur->conf->authuri);
 r->assbackwards    = 0;         /* I don't want headers. */ 
 r->method          = "GET";
 r->method_number   = M_GET;
 r->protocol        = "INCLUDED";
+
 
 apr_table_set(r->headers_in, "Cookie", er->ur->cookie);
 /*
@@ -735,8 +736,9 @@ r->assbackwards    = 0;         /* I don't want headers. */
 r->method          = "POST";
 r->method_number   = M_POST;
 r->protocol        = "INCLUDED";
-r->uri		   = uri;      
+ap_parse_uri(r, uri);		/* also sets the unparsed_uri field */
 r->the_request     = uri;       /* make sure the logging is correct */
+
 
 /*
  * Fake Basic Auth if authenticated or the backend does user/pass checking.

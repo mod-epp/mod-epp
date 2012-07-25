@@ -120,5 +120,5 @@ somewhat organised and focused.
 	Done.
 * check if Connection: close works through mod_proxy
 	Done.
-* pass the full faulty epp frame to the errow-handler. Needs to be converted from GET to POST.
+* pass the full faulty epp frame to the error-handler. Needs to be converted from GET to POST.
 

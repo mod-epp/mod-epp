@@ -1,4 +1,12 @@
 
+1.9: (July 2012)
+
+* Bugfix:
+	- mod_proxy needs unparsed_uri to be set in the request
+	  structure in Apache 2.2.22. Fixed by calling ap_parse_uri.
+
+The debugging for version 1.9 was sponsored by CentralNic.
+
 1.8: (April 2011)
 
 * Bugfix:
