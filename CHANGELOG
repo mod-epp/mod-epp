@@ -1,9 +1,15 @@
 
-1.9: (July 2012)
+1.9: (August 2012)
 
 * Bugfix:
 	- mod_proxy needs unparsed_uri to be set in the request
 	  structure in Apache 2.2.22. Fixed by calling ap_parse_uri.
+
+	- Eliminate compiler warnings
+
+	- logout clears information about the session now
+	  after calling the handler. 
+	  (Suggested by lilian @ rudenco.com.)
 
 The debugging for version 1.9 was sponsored by CentralNic.
 

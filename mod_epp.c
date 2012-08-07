@@ -610,6 +610,7 @@ er->ur->pw[0] 		= 0;
 er->ur->auth_string[0]	= 0;
 return(APR_SUCCESS);
 }
+
 /*
  * This is the core function. 
  *
@@ -693,11 +694,6 @@ if (!er->ur->authenticated && login_needed)	/* need login before continuing ? */
 	return;
 	}
 
-if (tag && !strcmp("logout",tag->name))
-	{
-	rv = epp_logout(er, tag);
-	}
-
 /*
  * now do the actual work
  */
@@ -716,8 +712,8 @@ apr_xml_to_text(r->pool,doc->root,APR_XML_X2T_FULL_NS_LANG, doc->namespaces ,NUL
  */
 er->serialised_xml_size = strlen(er->serialised_xml);
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
-	"XML: serialized xml size = %d.", er->serialised_xml_size);
-sprintf(content_length, "%u", strlen(EPP_CONTENT_FRAME_CGI) 
+	"XML: serialized xml size = %lu.", (unsigned long) er->serialised_xml_size);
+sprintf(content_length, "%lu", strlen(EPP_CONTENT_FRAME_CGI) 
 			+ strlen(EPP_CONTENT_CLTRID_CGI) 
 			+ strlen(er->cltrid) 
 			+ strlen(EPP_CONTENT_POSTFIX_CGI)
@@ -775,6 +771,11 @@ epp_dump_table(r->err_headers_out,"err_headers_out, after call");
 epp_rc = apr_table_get(r->err_headers_out, conf->rc_header);
 if (!epp_rc) 
 	epp_rc = apr_table_get(r->headers_out, conf->rc_header);
+
+if (tag && !strcmp("logout",tag->name))
+	{
+	rv = epp_logout(er, tag);
+	}
 
 /*
  * was this a <login>?
@@ -1177,7 +1178,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 
 	rv = apr_brigade_length(bb_tmp, 1, &bb_len);
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-                       "epp_tcp_out_filter: No EOS bucket. length of bb_tmp is now %lld.", bb_len);
+                       "epp_tcp_out_filter: No EOS bucket. length of bb_tmp is now %lu.", bb_len);
 	return APR_SUCCESS;
     }
 
@@ -1195,7 +1196,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 		((r->status == HTTP_UNAUTHORIZED) && conf->implicit_login)))
 	{
     	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-    		"epp_tcp_out_filter: Prefix = %lld bytes.", bb_len);
+    		"epp_tcp_out_filter: Prefix = %lu bytes.", bb_len);
 
 	r->bytes_sent += bb_len; 
 	header = apr_bucket_transient_create((char *) &len, 4,  f->c->bucket_alloc);
@@ -1209,7 +1210,7 @@ static apr_status_t epp_tcp_out_filter(ap_filter_t * f,
 	 * apr_brigade_length did that for us.
 	 */
 	ap_log_error(APLOG_MARK, APLOG_DEBUG, rv , NULL,
-    		"epp_tcp_out_filter: skipping data (%lld bytes), status = %d.", bb_len, r->status);
+    		"epp_tcp_out_filter: skipping data (%lu bytes), status = %d.", bb_len, r->status);
 
         apr_brigade_cleanup(bb);
 	}
