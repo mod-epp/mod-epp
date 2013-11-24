@@ -13,8 +13,8 @@ This is *not* a full implementation of EPP, this module just makes it
 possible to write an EPP server as a set of CGI scripts.
 
 The homepage of this software is https://sourceforge.net/projects/aepps/
-where you can find the latest version. This is version 1.9, released 
-in August 2012.
+where you can find the latest version. This is version 1.10, released 
+in November 2013.
 
 
 RATIONALE
@@ -70,7 +70,7 @@ header files!).
 
 Unpack the distribution and run:
 
-apxs -a -c -i mod_epp.c
+apxs2 -a -c -i mod_epp.c
 
 The -a should put something like
 
@@ -78,7 +78,7 @@ LoadModule epp_module         modules/mod_epp.so
 
 into your httpd.conf file to load the module.
 
-See the man page of apxs (part of the Apache 2.x httpd distribution)
+See the man page of apxs2 (part of the Apache 2.x httpd distribution)
 or http://www.onlamp.com/topics/apache/apache_modules for further
 information on compiling and installing Apache modules.
 
@@ -108,6 +108,9 @@ Apache 2.2.15. Version 1.9 made mod_epp compatible with Apache 2.2.22.
 (There is one issue, though: Some optimizations within Apache 2.2
 don't start the connection handler until the first bytes are received
 from the client. That's fine for HTTP, but not EPP. See below.)
+
+As all versions since 1.7 were developed for Apache 2.2.x, support for
+Apache 2.0.x might have been broken.
 
 CONFIGURATION
 -------------
@@ -452,12 +455,20 @@ mod_epp is doing, run apache like this:
 httpd -e debug -X
 
 When using gdb, make sure that you use the .gdbinit file that comes with the
-apache 2.x source code. The "dump_bucket" and "dump_brigade" macros defined in
-there are *really* helpful.
+apache 2.x source code and mod_epp. The "dump_bucket" and "dump_brigade" 
+macros defined in there are *really* helpful.
 
 To build a httpd with debugging symbols, use 
 CFLAGS='-g' ./configure --with-included-apr --enable-proxy-http --enable-proxy
 in the httpd source tree.
+
+For debugging under Debian use 
+export DEB_BUILD_OPTIONS="debug nostrip noopt"
+dpkg-buildpackage -us -uc
+to build the Apache packages. The debugging options might not be picked up
+by apxs2, so you might want to use "apxs2 -c -i -Wc,-O0 -Wc,-g  mod_epp.c"
+to force this.
+
 
 AUTHOR
 ------
@@ -469,6 +480,7 @@ Version 1.6 was sponsored by SIDN.
 Version 1.7 was sponsored by CentralNic.
 Version 1.8 was sponsored by SIDN.
 Version 1.9 was sponsored by CentralNic.
+Version 1.10 was sponsored by CentralNic.
 
 LICENCE
 -------

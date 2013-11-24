@@ -713,6 +713,40 @@ apr_xml_to_text(r->pool,doc->root,APR_XML_X2T_FULL_NS_LANG, doc->namespaces ,NUL
 er->serialised_xml_size = strlen(er->serialised_xml);
 ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, NULL,
 	"XML: serialized xml size = %lu.", (unsigned long) er->serialised_xml_size);
+
+/*
+ * Create the multipart/formdata MIME structure for the request
+ * as the downstream filter might not want to get all of it at once,
+ * we put it in a temporary bucket-brigade. The input filter will then
+ * hand off data in the desired chunks.
+ */
+
+ap_log_error(APLOG_MARK, APLOG_DEBUG, 0 , NULL,
+  	"epp_process_frame: creating the multipart/form-data (framesize: %lu)", er->serialised_xml_size);
+
+er->bb_formdata = apr_brigade_create(r->pool, r->connection->bucket_alloc);
+
+APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_immortal_create(EPP_CONTENT_FRAME_CGI, 
+			strlen(EPP_CONTENT_FRAME_CGI), r->connection->bucket_alloc));
+APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_pool_create(er->serialised_xml,er->serialised_xml_size,
+	r->pool,r->connection->bucket_alloc));
+if (conf->raw_frame) {
+	APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_immortal_create(conf->raw_frame, 
+			strlen(conf->raw_frame), r->connection->bucket_alloc));
+	APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_pool_create(er->orig_xml,er->orig_xml_size,
+			r->pool,r->connection->bucket_alloc));
+}
+APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_immortal_create(EPP_CONTENT_CLTRID_CGI, 
+			strlen(EPP_CONTENT_CLTRID_CGI), r->connection->bucket_alloc));
+APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_pool_create(er->cltrid,strlen(er->cltrid),
+	r->pool,r->connection->bucket_alloc));
+APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_immortal_create(EPP_CONTENT_POSTFIX_CGI, 
+			strlen(EPP_CONTENT_POSTFIX_CGI), r->connection->bucket_alloc));
+APR_BRIGADE_INSERT_TAIL(er->bb_formdata, apr_bucket_eos_create(r->connection->bucket_alloc));
+
+
+/* fixme, perhap use apr_brigade_length */
+
 sprintf(content_length, "%lu", strlen(EPP_CONTENT_FRAME_CGI) 
 			+ strlen(EPP_CONTENT_CLTRID_CGI) 
 			+ strlen(er->cltrid) 
@@ -1279,30 +1313,48 @@ static apr_status_t epp_xmlcgi_filter(ap_filter_t *f, apr_bucket_brigade *bb,
 {
     epp_rec *er = f->ctx;
     epp_conn_rec *conf = er->ur->conf;
+    apr_off_t  bytes_left;
+    apr_status_t rv;
+    apr_bucket *e_keepthis, *e;
 
-    if (er->serialised_xml_size > 0)
-    	{
-	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_FRAME_CGI, 
-				strlen(EPP_CONTENT_FRAME_CGI), f->r->connection->bucket_alloc));
-        APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->serialised_xml,er->serialised_xml_size,
-		f->r->pool,f->r->connection->bucket_alloc));
-	if (conf->raw_frame) {
-		APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(conf->raw_frame, 
-				strlen(conf->raw_frame), f->r->connection->bucket_alloc));
-        	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->orig_xml,er->orig_xml_size,
-				f->r->pool,f->r->connection->bucket_alloc));
-	}
-	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_CLTRID_CGI, 
-				strlen(EPP_CONTENT_CLTRID_CGI), f->r->connection->bucket_alloc));
-        APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_pool_create(er->cltrid,strlen(er->cltrid),
-		f->r->pool,f->r->connection->bucket_alloc));
-	APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_immortal_create(EPP_CONTENT_POSTFIX_CGI, 
-				strlen(EPP_CONTENT_POSTFIX_CGI), f->r->connection->bucket_alloc));
-	er->serialised_xml_size = 0;    /* don't send content twice if called twice. */
-	}
 
-    APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_eos_create(f->r->connection->bucket_alloc));
-    return APR_SUCCESS;
+/*
+ * how much data do we have left in the bb_formdata brigade?
+ */
+
+apr_brigade_length(er->bb_formdata,1,&bytes_left);
+
+ap_log_error(APLOG_MARK, APLOG_DEBUG, 0 , NULL,
+   "epp_xmlcgi_filter: %lu bytes left in bb_formdata", bytes_left);
+
+/*
+ * simple case: we have data, but no more that requested
+ */
+if ((bytes_left <= readbytes) && (bytes_left > 0)) {
+	APR_BRIGADE_PREPEND(bb,er->bb_formdata);
+	return(APR_SUCCESS);
+}
+
+/*
+ * next easy case: no more data left
+ */
+if (bytes_left == 0) {
+/*    APR_BRIGADE_INSERT_TAIL(bb, apr_bucket_eos_create(f->r->connection->bucket_alloc)); */
+    return(AP_NOBODY_READ);
+/* FIXME: not sure about the error-code */
+}
+
+/*
+ * now the tricky case: we cannot hand over the full brigade. Perhaps we even
+ * need to split individual buckets.
+ */
+rv = apr_brigade_partition(er->bb_formdata, readbytes, &e_keepthis);
+while((e = APR_BRIGADE_FIRST(er->bb_formdata)) != e_keepthis) {
+    APR_BUCKET_REMOVE(e);
+    APR_BRIGADE_INSERT_TAIL(bb, e);
+}
+
+return APR_SUCCESS;
 }
 
 

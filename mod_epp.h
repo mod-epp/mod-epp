@@ -116,7 +116,7 @@ module AP_MODULE_DECLARE_DATA epp_module;
 /*
  * Use the following as HTTP User-agent
  */
-#define EPP_USER_AGENT "mod_epp/1.8 +https://sourceforge.net/projects/aepps/"
+#define EPP_USER_AGENT "mod_epp/1.10 +https://sourceforge.net/projects/aepps/"
 
 
 /*
@@ -173,6 +173,7 @@ typedef struct epp_rec {
     request_rec *r;
     apr_bucket_brigade *bb_out;
     apr_bucket_brigade *bb_tmp;
+    apr_bucket_brigade *bb_formdata;
 
     const char *serialised_xml;
     apr_size_t serialised_xml_size;

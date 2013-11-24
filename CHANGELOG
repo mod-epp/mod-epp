@@ -1,4 +1,15 @@
 
+1.10 (November 2013)
+
+* Bugfix:
+	- the xmlcgi input filter would potentially return more data
+	  than the downstream filter asked for. This seems to be
+	  fine for some backends, but php5 croaks on this.
+
+	  Fixed by using a temporary bucket-brigade.
+
+The debugging for version 1.10 was sponsored by CentralNic.
+
 1.9: (August 2012)
 
 * Bugfix:
